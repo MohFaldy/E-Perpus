@@ -1,0 +1,25 @@
+{% extends "layout.html" %} {% block title %}Halaman Tidak Ditemukan{% endblock
+%} {% block content %}
+<div
+  class="min-h-screen bg-gray-100 flex flex-col justify-center items-center text-center px-4"
+>
+  <div class="max-w-md">
+    <h1 class="text-9xl font-extrabold text-blue-600">404</h1>
+    <h2 class="mt-4 text-3xl font-bold text-gray-800">
+      Halaman Tidak Ditemukan
+    </h2>
+    <p class="mt-4 text-gray-600">
+      Maaf, kami tidak dapat menemukan halaman yang Anda cari. Mungkin halaman
+      tersebut telah dihapus atau URL-nya salah.
+    </p>
+    <div class="mt-8">
+      <a
+        href="{{ url_for('index') }}"
+        class="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition-colors"
+      >
+        Kembali ke Beranda
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
