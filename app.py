@@ -35,7 +35,12 @@ logging.basicConfig(
 load_dotenv() # Muat variabel lingkungan dari file .env
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(24) # Gunakan dari .env, fallback ke os.urandom
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+# --- Validasi dan set DATABASE_URL ---
+database_url = os.environ.get('DATABASE_URL')
+if not database_url:
+    # Ini akan menghentikan aplikasi dengan pesan yang jelas jika variabel tidak ada di Railway
+    raise RuntimeError("FATAL ERROR: Variabel lingkungan 'DATABASE_URL' tidak ditemukan atau kosong. Pastikan sudah diatur di dashboard Railway.")
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 
