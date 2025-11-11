@@ -211,12 +211,21 @@ def login_required(f):
             logging.warning(f"Akses tidak sah atau sesi berakhir ke endpoint '{request.endpoint}' dari IP {request.remote_addr}. Diperlukan login.")
             flash('Sesi Anda telah berakhir atau Anda belum login. Silakan login kembali.', 'warning')
             return redirect(url_for('login'))
+
         user = User.query.get(session['user_id'])
+        if not user:
+            # User tidak ditemukan di DB — bersihkan session dan arahkan ke login
+            logging.warning(f"Sesi mengandung user_id yang tidak ditemukan: {session.get('user_id')}. Menghapus sesi.")
+            session.clear()
+            flash('Sesi Anda tidak valid. Silakan login kembali.', 'warning')
+            return redirect(url_for('login'))
+
         if not user.is_verified:
             flash('Akun Anda belum diverifikasi. Silakan cek email Anda.', 'warning')
             return redirect(url_for('verify'))
         return f(*args, **kwargs)
     return decorated_function
+
 
 # Rute Halaman Utama (Untuk Pengguna)
 @app.route('/')
@@ -496,12 +505,18 @@ def reset_with_token(token):
 
 
 # --- Rute Verifikasi ---
+
 @app.route('/verify', methods=['GET', 'POST'])
 def verify():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
     user = User.query.get(session['user_id'])
+    if not user:
+        session.clear()
+        flash('Sesi tidak valid. Silakan login kembali.', 'warning')
+        return redirect(url_for('login'))
+
     if user.is_verified:
         return redirect(url_for('index'))
 
@@ -532,6 +547,11 @@ def resend_code():
         return redirect(url_for('login'))
 
     user = User.query.get(session['user_id'])
+    if not user:
+        session.clear()
+        flash('Sesi tidak valid. Silakan login kembali.', 'warning')
+        return redirect(url_for('login'))
+
     if user.is_verified:
         return redirect(url_for('index'))
 
@@ -804,6 +824,64 @@ def hapus_buku(buku_id):
     return redirect(url_for('admin_dashboard'))
 
 
+@app.route('/admin/logs')
+@admin_required
+def view_logs():
+    """Menampilkan log aktivitas pengguna dari file e-perpus.log."""
+    parsed_logs = []
+    log_file_path = 'e-perpus.log'
+    
+    # Keyword untuk memfilter log yang relevan dengan aktivitas pengguna
+    user_activity_keywords = [
+        'login', 'logout', 'gagal', 'berhasil', 'verifikasi', 'dihapus', 
+        'menambahkan', 'mengedit', 'mengunduh', 'Akses', 'reset', '2FA', 'membersihkan'
+    ]
+
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            # Baca 200 baris terakhir untuk efisiensi
+            lines = f.readlines()[-200:]
+
+            for line in lines:
+                # Hanya proses baris yang mengandung keyword aktivitas pengguna (case-insensitive)
+                if any(keyword.lower() in line.lower() for keyword in user_activity_keywords):
+                    # Coba parse baris log dengan format yang diharapkan
+                    match = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (\w+) - (.*)", line)
+                    if match:
+                        timestamp, level, message = match.groups()
+                        
+                        # Coba ekstrak alamat IP dari pesan
+                        ip_match = re.search(r"IP: ([\d\.]+)", message)
+                        ip_address = ip_match.group(1) if ip_match else "N/A"
+                        
+                        parsed_logs.append({
+                            "timestamp": timestamp,
+                            "level": level,
+                            "message": message.strip(),
+                            "ip": ip_address
+                        })
+        # Balik urutan list yang sudah diproses agar log terbaru muncul di paling atas
+        parsed_logs.reverse()
+    except FileNotFoundError:
+        flash('File log tidak ditemukan.', 'danger')
+    except Exception as e:
+        flash(f'Terjadi kesalahan saat membaca file log: {e}', 'danger')
+        
+    return render_template('admin/logs.html', logs=parsed_logs)
+        
+
+@app.route('/admin/logs/delete', methods=['POST'])
+@admin_required
+def delete_logs():
+    log_file = 'e-perpus.log'
+    try:
+        open(log_file, 'w').close()  # Kosongkan isi file
+        flash('Semua log berhasil dihapus.', 'success')
+    except Exception as e:
+        flash(f'Gagal menghapus log: {str(e)}', 'danger')
+    return redirect(url_for('view_logs'))
+
+
 # --- Middleware untuk Header Keamanan ---
 @app.after_request
 def add_security_headers(response):
@@ -830,5 +908,5 @@ def forbidden_error(error):
 
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
 
