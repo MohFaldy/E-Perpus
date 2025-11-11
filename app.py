@@ -66,6 +66,7 @@ app.config['MAIL_DEFAULT_SENDER'] = ('E-Perpus SMAN 1 Tinombo', os.environ.get('
 # Ambil dari .env
 app.config['RECAPTCHA_SITE_KEY'] = os.environ.get('RECAPTCHA_SITE_KEY')
 app.config['RECAPTCHA_SECRET_KEY'] = os.environ.get('RECAPTCHA_SECRET_KEY')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Batas global 16MB
 
 # Serializer untuk token reset password
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
@@ -359,13 +360,20 @@ def verify_2fa():
 @app.errorhandler(429)
 def ratelimit_handler(e):
     # Cek apakah error terjadi di halaman login
+    logging.warning(f"Rate limit terpicu untuk IP: {request.remote_addr} pada endpoint: {request.endpoint}")
     if request.endpoint == 'login':
-        logging.warning(f"Rate limit terpicu untuk IP: {request.remote_addr} pada endpoint: {request.endpoint}")
         flash('Maaf, Anda mencoba login lebih dari 5 kali dalam 1 menit. Silakan verifikasi bahwa Anda bukan robot.', 'warning')
         # Langsung render template login dengan captcha, dan kembalikan status 429
         return render_template('login.html', 
                                show_captcha=True, 
                                recaptcha_site_key=app.config['RECAPTCHA_SITE_KEY']), 429
+            # Tambahkan penanganan untuk halaman verifikasi 2FA
+    elif request.endpoint == 'verify_2fa':
+        # Hapus sesi 2FA yang tertunda agar pengguna harus login ulang
+        session.pop('2fa_user_id', None)
+        flash('Terlalu banyak percobaan verifikasi 2FA yang salah. Silakan login kembali.', 'danger')
+        # Arahkan kembali ke halaman login, ini akan memutus alur 2FA
+        return redirect(url_for('login'))
     # Untuk halaman lain, kembalikan response default dari error
     return e.get_response()
 
@@ -717,6 +725,14 @@ def tambah_buku():
         
         file = request.files['file_buku']
         
+                # --- Lapisan Keamanan 2: Validasi Ukuran File Spesifik ---
+        # 16MB dalam bytes
+        max_file_size = 16 * 1024 * 1024
+        if len(file.read()) > max_file_size:
+            flash('Ukuran file melebihi batas maksimal 16MB.', 'danger')
+            return redirect(request.url)
+        file.seek(0) # Kembalikan pointer file ke awal setelah membaca
+        
         if file.filename == '':
             flash('Tidak ada file yang dipilih.', 'danger')
             return redirect(request.url)
@@ -763,18 +779,29 @@ def edit_buku(buku_id):
             file = request.files['file_buku']
             if file.filename != '':
                 if not allowed_file(file.filename):
-                    flash('Tipe file tidak diizinkan. Hanya PDF, EPUB, DOC, DOCX, TXT yang diperbolehkan.', 'danger')
+                    
+                    flash('Tipe file tidak diizinkan.', 'danger')
                     return redirect(request.url)
+                
+                # --- Lapisan Keamanan 2: Validasi Ukuran File Spesifik (untuk edit) ---
+                max_file_size = 16 * 1024 * 1024
+                if len(file.read()) > max_file_size:
+                    flash('Ukuran file baru melebihi batas maksimal 16MB.', 'danger')
+                    return redirect(request.url)
+                file.seek(0) # Kembalikan pointer file ke awal
+                    
+                flash('Tipe file tidak diizinkan. Hanya PDF, EPUB, DOC, DOCX, TXT yang diperbolehkan.', 'danger')
+                return redirect(request.url)
                 # Hapus file lama jika ada
-                if buku.file_path and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], buku.file_path)):
-                    os.remove(os.path.join(app.config['UPLOAD_FOLDER'], buku.file_path))
+            if buku.file_path and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], buku.file_path)):
+                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], buku.file_path))
                 
                 # Simpan file baru
-                filename = secure_filename(file.filename)
-                unique_filename = str(uuid.uuid4()) + '_' + filename
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(file_path)
-                buku.file_path = unique_filename
+            filename = secure_filename(file.filename)
+            unique_filename = str(uuid.uuid4()) + '_' + filename
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(file_path)
+            buku.file_path = unique_filename
         
         db.session.commit()
         logging.info(f"Admin (ID: {session.get('user_id')}) mengedit buku: '{buku.judul}' (ID: {buku.id})")
