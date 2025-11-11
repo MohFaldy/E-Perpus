@@ -203,7 +203,7 @@ def send_password_reset_email(user):
         mail.send(msg)
         return True
     except Exception as e:
-        logging.error(f"Error sending password reset email: {e}")
+        logging.error(f"Gagal mengirim email verifikasi ke {user.email}: {e}")
         return False
 
 # app.py (lanjutan...)
