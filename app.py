@@ -27,6 +27,7 @@ app = Flask(__name__)
 
 # --- Konfigurasi Logging ---
 logging.basicConfig(
+    filename='e-perpus.log', # Nama file log
     level=logging.INFO,      # Level log (INFO, WARNING, ERROR, DEBUG)
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
