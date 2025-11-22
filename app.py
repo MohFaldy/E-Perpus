@@ -51,8 +51,10 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True # Mencegah akses cookie dari JavaSc
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Mencegah cookie dikirim pada request cross-site
 
 # Konfigurasi File Upload
-UPLOAD_FOLDER = 'static/uploads/books' # Folder untuk menyimpan file buku
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# Jadikan path absolut untuk keandalan yang lebih baik
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'books')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER 
 # Ekstensi file yang diizinkan untuk buku
 ALLOWED_EXTENSIONS = {'pdf', 'epub', 'doc', 'docx', 'txt'}
 
