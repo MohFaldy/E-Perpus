@@ -1,135 +1,200 @@
 {% extends "layout.html" %} {% block title %}Dasbor Admin{% endblock %} {% block
-content %}
-<div class="flex min-h-screen bg-gray-100">
-  <!-- Sidebar -->
-  <aside class="w-64 bg-gray-800 text-white p-6">
-    <h2 class="text-2xl font-bold mb-8">Admin Panel</h2>
-    <nav class="space-y-1">
-      <a
-        href="{{ url_for('admin_dashboard') }}"
-        class="block py-2.5 px-4 rounded transition duration-200 {% if request.endpoint == 'admin_dashboard' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}"
-        >Kelola Buku</a
-      >
-      <!-- Contoh di dalam navigasi Anda -->
-      <a
-        href="{{ url_for('manage_users') }}"
-        class="block py-2.5 px-4 rounded transition duration-200 {% if request.endpoint == 'manage_users' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}"
-      >
-        Kelola Pengguna
-      </a>
-      <a
-        href="{{ url_for('view_logs') }}"
-        class="block py-2.5 px-4 rounded transition duration-200 {% if request.endpoint == 'view_logs' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}"
-      >
-        Logs
-      </a>
-
-      <a
-        href="{{ url_for('logout') }}"
-        class="block py-2.5 px-4 rounded transition duration-200 text-gray-300 hover:bg-gray-700 hover:text-white"
-        >Logout</a
-      >
-    </nav>
-  </aside>
-
-  <!-- Main Content -->
-  <main class="flex-1 p-10">
-    <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %} {% if
-    messages %} {% for category, message in messages %}
-    <div
-      class="p-4 mb-4 text-sm rounded-lg {% if category == 'danger' %} bg-red-100 text-red-700 {% elif category == 'success' %} bg-green-100 text-green-700 {% else %} bg-blue-100 text-blue-700 {% endif %}"
-      role="alert"
+  content %}
+  <div x-data="{ sidebarOpen: false }" class="flex h-screen bg-gray-100">
+    <!-- Sidebar -->
+    <aside
+      class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-900 text-white transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-0"
+      :class="{'translate-x-0 ease-out': sidebarOpen, '-translate-x-full ease-in': !sidebarOpen}"
     >
-      {{ message }}
-    </div>
-    {% endfor %} {% endif %} {% endwith %}
-    <div class="flex justify-between items-center mb-8">
-      <h1 class="text-3xl font-bold">Manajemen Buku</h1>
-      <div class="flex flex-col items-end">
-        <a
-          href="{{ url_for('tambah_buku') }}"
-          class="bg-green-500 text-white py-2 px-6 rounded-lg hover:bg-green-600 transition-colors"
-        >
-          + Tambah Buku
-        </a>
-        {% if current_user and current_user.otp_secret is none %}
-        <a
-          href="{{ url_for('setup_2fa') }}"
-          class="mt-2 inline-block bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
-        >
-          Aktifkan 2FA
-        </a>
-        {% else %}
-        <!-- Jika 2FA sudah aktif, tampilkan tombol untuk menonaktifkan -->
-        <a
-          href="{{ url_for('disable_2fa') }}"
-          class="mt-2 inline-block bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors"
-        >
-          Nonaktifkan 2FA
-        </a>
-        {% endif %}
+      <div class="flex items-center justify-center mt-8">
+        <div class="flex items-center">
+          <span class="text-white text-2xl font-semibold">Admin Panel</span>
+        </div>
       </div>
-    </div>
-
-    <!-- Tabel Buku -->
-    <div class="bg-white shadow-md rounded-lg overflow-hidden">
-      <table class="min-w-full leading-normal">
-        <thead>
-          <tr
-            class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+      <nav class="mt-10">
+        <a href="{{ url_for('admin_dashboard') }}" class="flex items-center mt-4 py-2 px-6 {% if request.endpoint == 'admin_dashboard' %}bg-gray-700 bg-opacity-50{% endif %} text-gray-100 hover:bg-gray-700">
+          <i class="fas fa-tachometer-alt w-6"></i><span class="mx-3">Dasbor</span>
+        </a>
+        <a href="{{ url_for('manage_users') }}" class="flex items-center mt-4 py-2 px-6 {% if request.endpoint == 'manage_users' %}bg-gray-700 bg-opacity-50{% endif %} text-gray-100 hover:bg-gray-700">
+          <i class="fas fa-users w-6"></i><span class="mx-3">Pengguna</span>
+        </a>
+        <a href="{{ url_for('view_logs') }}" class="flex items-center mt-4 py-2 px-6 {% if request.endpoint == 'view_logs' %}bg-gray-700 bg-opacity-50{% endif %} text-gray-100 hover:bg-gray-700">
+          <i class="fas fa-clipboard-list w-6"></i><span class="mx-3">Logs</span>
+        </a>
+        <a href="{{ url_for('logout') }}" class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700">
+          <i class="fas fa-sign-out-alt w-6"></i><span class="mx-3">Logout</span>
+        </a>
+      </nav>
+    </aside>
+  
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Header -->
+      <header
+        class="flex justify-between items-center py-4 px-6 bg-white border-b-4 border-blue-600"
+      >
+        <div class="flex items-center">
+          <button @click="sidebarOpen = true" class="text-gray-500 lg:hidden">
+            <i class="fas fa-bars text-xl"></i>
+          </button>
+          <h1 class="text-2xl font-semibold text-gray-700 ml-4 lg:ml-0">
+            Dasbor
+          </h1>
+        </div>
+  
+        <div class="flex items-center">
+          <span class="mr-4">Selamat datang, <strong>{{ current_user.username }}</strong>!</span>
+          <a href="{{ url_for('logout') }}" class="text-gray-500 hover:text-red-600" title="Logout">
+            <i class="fas fa-sign-out-alt text-xl"></i>
+          </a>
+        </div>
+      </header>
+  
+      <!-- Main Content -->
+      <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+        <div class="container mx-auto">
+          <!-- Flash Messages -->
+          {% with messages = get_flashed_messages(with_categories=true) %} {% if
+          messages %} {% for category, message in messages %}
+          <div
+            class="p-4 mb-6 text-sm rounded-lg shadow-md {% if category == 'danger' %} bg-red-100 text-red-800 {% elif category == 'success' %} bg-green-100 text-green-800 {% else %} bg-blue-100 text-blue-800 {% endif %}"
+            role="alert"
           >
-            <th class="px-5 py-3">Judul</th>
-            <th class="px-5 py-3">Penulis</th>
-            <th class="px-5 py-3">Tahun</th>
-            <th class="px-5 py-3">Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for book in books %}
-          <tr class="border-b border-gray-200 hover:bg-gray-50">
-            <td class="px-5 py-4 text-sm">
-              <p class="text-gray-900 whitespace-no-wrap">{{ book.judul }}</p>
-            </td>
-            <td class="px-5 py-4 text-sm">
-              <p class="text-gray-900 whitespace-no-wrap">{{ book.penulis }}</p>
-            </td>
-            <td class="px-5 py-4 text-sm">
-              <p class="text-gray-900 whitespace-no-wrap">
-                {{ book.tahun_terbit }}
-              </p>
-            </td>
-            <td class="px-5 py-4 text-sm flex gap-4">
-              <a
-                href="{{ url_for('edit_buku', buku_id=book.id) }}"
-                class="text-yellow-600 hover:text-yellow-900 font-medium"
-                >Edit</a
-              >
-              <form
-                action="{{ url_for('hapus_buku', buku_id=book.id) }}"
-                method="POST"
-                onsubmit="return confirm('Apakah Anda yakin ingin menghapus buku ini?');"
-              >
-                <input
-                  type="hidden"
-                  name="csrf_token"
-                  value="{{ csrf_token() }}"
-                />
-                <button
-                  type="submit"
-                  class="text-red-600 hover:text-red-900 font-medium bg-transparent border-none p-0 cursor-pointer"
+            {{ message }}
+          </div>
+          {% endfor %} {% endif %} {% endwith %}
+  
+          <!-- Stat Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-lg flex items-center">
+              <div class="bg-blue-500 text-white rounded-full p-3">
+                <i class="fas fa-book w-6 h-6"></i>
+              </div>
+              <div class="ml-4">
+                <p class="text-gray-500">Total Buku</p>
+                <p class="text-2xl font-bold text-gray-800">{{ total_buku }}</p>
+              </div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg flex items-center">
+              <div class="bg-green-500 text-white rounded-full p-3">
+                <i class="fas fa-users w-6 h-6"></i>
+              </div>
+              <div class="ml-4">
+                <p class="text-gray-500">Total Pengguna</p>
+                <p class="text-2xl font-bold text-gray-800">{{ total_pengguna }}</p>
+              </div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg flex items-center">
+              {% if current_user and current_user.otp_secret is none %}
+              <div class="bg-yellow-500 text-white rounded-full p-3">
+                <i class="fas fa-shield-alt w-6 h-6"></i>
+              </div>
+              <div class="ml-4">
+                <p class="text-gray-500">Keamanan Akun</p>
+                <a href="{{ url_for('setup_2fa') }}" class="text-blue-600 font-bold hover:underline">Aktifkan 2FA</a>
+              </div>
+              {% else %}
+              <div class="bg-green-500 text-white rounded-full p-3">
+                <i class="fas fa-lock w-6 h-6"></i>
+              </div>
+              <div class="ml-4">
+                <p class="text-gray-500">Keamanan Akun</p>
+                <p class="font-bold text-green-700">2FA Aktif</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+  
+          <!-- Tabel Buku Terbaru -->
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-semibold text-gray-700">
+              Buku Terbaru Ditambahkan
+            </h2>
+            <a
+              href="{{ url_for('tambah_buku') }}"
+              class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+            >
+              <i class="fas fa-plus mr-2"></i> Tambah Buku
+            </a>
+          </div>
+  
+          <div class="bg-white shadow-lg rounded-lg overflow-x-auto">
+            <table class="min-w-full whitespace-nowrap">
+              <thead class="bg-gray-50">
+                <tr
+                  class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
                 >
-                  Hapus
-                </button>
-              </form>
-              {# Nanti ke url_for('hapus_buku', book_id=book.id) #}
-            </td>
-          </tr>
-          <!-- Akhir Baris Data -->
-          {% endfor %}
-        </tbody>
-      </table>
+                  <th class="px-6 py-3">Judul</th>
+                  <th class="px-6 py-3">Penulis</th>
+                  <th class="px-6 py-3">Tahun</th>
+                  <th class="px-6 py-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200">
+                {% for book in books %}
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4">
+                    <p class="text-gray-900">{{ book.judul }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-gray-700">{{ book.penulis }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-gray-700">{{ book.tahun_terbit }}</p>
+                  </td>
+                  <td class="px-6 py-4 text-center">
+                    <div class="flex item-center justify-center gap-4">
+                      <a
+                        href="{{ url_for('edit_buku', buku_id=book.id) }}"
+                        class="text-yellow-600 hover:text-yellow-800"
+                        title="Edit"
+                      >
+                        <i class="fas fa-pencil-alt"></i>
+                      </a>
+                      <form
+                        action="{{ url_for('hapus_buku', buku_id=book.id) }}"
+                        method="POST"
+                        onsubmit="return confirm('Apakah Anda yakin ingin menghapus buku ini?');"
+                      >
+                        <input
+                          type="hidden"
+                          name="csrf_token"
+                          value="{{ csrf_token() }}"
+                        />
+                        <button
+                          type="submit"
+                          class="text-red-600 hover:text-red-800"
+                          title="Hapus"
+                        >
+                          <i class="fas fa-trash-alt"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4" class="text-center py-10 text-gray-500">
+                    Belum ada buku yang ditambahkan.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
     </div>
-  </main>
-</div>
-{% endblock %}
+  </div>
+  
+  <!-- Alpine.js untuk interaktivitas sidebar -->
+  <script
+    src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.min.js"
+    defer
+  ></script>
+  <!-- Font Awesome untuk ikon -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js"
+    crossorigin="anonymous"
+  ></script>
+  {% endblock %}
+  

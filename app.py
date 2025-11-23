@@ -695,8 +695,12 @@ def admin_required(f):
 @app.route('/admin/dashboard')
 @admin_required
 def admin_dashboard():
-    books = Buku.query.order_by(Buku.id.desc()).all()
-    return render_template('admin/dashboard.html', books=books,)
+    books = Buku.query.order_by(Buku.id.desc()).limit(10).all() # Ambil 10 buku terbaru
+    total_buku = Buku.query.count()
+    total_pengguna = User.query.count()
+    return render_template('admin/dashboard.html', 
+                           books=books, 
+                           total_buku=total_buku, total_pengguna=total_pengguna)
 
 # 2fa
 
