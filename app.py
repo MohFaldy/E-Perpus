@@ -139,6 +139,8 @@ class User(db.Model):
     verification_code = db.Column(db.String(6), nullable=True)
     verification_code_expires = db.Column(db.DateTime, nullable=True)
     otp_secret = db.Column(db.String(32), nullable=True, unique=True)
+    login_otp = db.Column(db.String(6), nullable=True)
+    login_otp_expires = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -229,6 +231,31 @@ def send_password_reset_email(user):
         return True
     except Exception as e:
         logging.error(f"Gagal mengirim email reset password ke {user.email} via Mailjet API: {e}")
+        return False
+
+def send_login_otp_email(user):
+    """Mengirim kode OTP untuk verifikasi login."""
+    try:
+        api_key = os.environ.get('MAILJET_API_KEY')
+        api_secret = os.environ.get('MAILJET_SECRET_KEY')
+        sender_email = os.environ.get('MAIL_SENDER_EMAIL')
+
+        mailjet = MailjetClient(auth=(api_key, api_secret), version='v3.1')
+        data = {
+            'Messages': [{
+                "From": {"Email": sender_email, "Name": "E-Perpus SMAN 1 Tinombo"},
+                "To": [{"Email": user.email, "Name": user.username}],
+                "Subject": "Kode Verifikasi Login Anda",
+                "TextPart": f"Halo {user.username},\n\nSeseorang mencoba login ke akun Anda. Gunakan kode berikut untuk menyelesaikan proses login:\n\n{user.login_otp}\n\nKode ini hanya berlaku selama 5 menit. Jika ini bukan Anda, Anda dapat mengabaikan email ini."
+            }]
+        }
+        result = mailjet.send.create(data=data)
+        if result.status_code != 200:
+            logging.error(f"Mailjet API Error (Login OTP): {result.status_code} - {result.json()}")
+            return False
+        return True
+    except Exception as e:
+        logging.error(f"Gagal mengirim email login OTP ke {user.email} via Mailjet API: {e}")
         return False
 
 # app.py (lanjutan...)
@@ -323,36 +350,36 @@ def login():
             logging.info(f"Login berhasil untuk user '{username}' dari IP: {request.remote_addr}")
             session.pop('login_attempts', None) # Hapus penghitung jika ada
             
-            # --- PERUBAHAN DIMULAI DI SINI ---
-            # Jika user adalah admin dan 2FA aktif, jangan langsung login.
+            # --- ALUR VERIFIKASI LANJUTAN ---
+
+            # 1. Jika akun belum diverifikasi sama sekali (paska registrasi),
+            #    arahkan ke alur verifikasi akun awal.
+            if not user.is_verified:
+                # Pastikan kode ada dan belum kedaluwarsa, atau buat yang baru
+                if not user.verification_code or datetime.utcnow() > user.verification_code_expires:
+                    user.verification_code = generate_verification_code()
+                    user.verification_code_expires = datetime.utcnow() + timedelta(minutes=10)
+                    db.session.commit()
+                    send_verification_email(user) # Kirim email
+                
+                session['user_id'] = user.id # Simpan ID untuk halaman verifikasi
+                flash('Akun Anda belum diverifikasi. Kami telah mengirimkan kode ke email Anda.', 'info')
+                return redirect(url_for('verify'))
+
+            # 2. Jika user adalah admin dan 2FA (Aplikasi Authenticator) aktif, arahkan ke sana.
             if user.role == 'administrator' and user.otp_secret:
                 session['2fa_user_id'] = user.id  # Simpan ID user untuk diverifikasi
                 logging.info(f"Admin '{username}' diarahkan ke verifikasi 2FA.")
                 return redirect(url_for('verify_2fa'))
-            # --- PERUBAHAN SELESAI DI SINI ---
-            
-            session['user_id'] = user.id
-            session['role'] = user.role
-            session.permanent = True # Tandai sesi ini agar menggunakan PERMANENT_SESSION_LIFETIME
-                       
-            if not user.is_verified:
-                user.verification_code = generate_verification_code()
-                user.verification_code_expires = datetime.utcnow() + timedelta(minutes=10)
-                db.session.commit()
-                
-                if send_verification_email(user):
-                    flash('Login berhasil! Kami telah mengirimkan kode verifikasi ke email Anda.', 'success')
-                else:
-                    flash('Login berhasil, tetapi kami gagal mengirim email verifikasi. Coba lagi nanti.', 'danger')
-                
-                return redirect(url_for('verify'))
-          
-
-            flash('Login berhasil!', 'success')
-            if user.role == 'administrator':
-                return redirect(url_for('admin_dashboard'))
-            else:
-                return redirect(url_for('index'))
+            # 3. Untuk SEMUA PENGGUNA LAINNYA (pengguna biasa atau admin tanpa 2FA),
+            #    wajibkan verifikasi login via email SETIAP SAAT.
+            user.login_otp = generate_verification_code()
+            user.login_otp_expires = datetime.utcnow() + timedelta(minutes=5) # OTP berlaku 5 menit
+            db.session.commit()
+            send_login_otp_email(user)
+            session['login_verify_user_id'] = user.id # Simpan ID user sementara
+            flash('Password benar. Kami telah mengirimkan kode verifikasi ke email Anda untuk menyelesaikan login.', 'info')
+            return redirect(url_for('verify_login'))
         else:
             logging.warning(f"Login gagal untuk username: '{username}' dari IP: {request.remote_addr}")
             flash('Username atau password salah.', 'danger')
@@ -393,6 +420,45 @@ def verify_2fa():
 
     return render_template('verify_2fa.html')
 
+@app.route('/verify-login', methods=['GET', 'POST'])
+@limiter.limit("10 per 5 minutes")
+def verify_login():
+    if 'login_verify_user_id' not in session:
+        flash('Silakan mulai proses login dari awal.', 'warning')
+        return redirect(url_for('login'))
+
+    user = User.query.get(session['login_verify_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        code = request.form.get('code')
+
+        # Cek apakah kode benar dan belum kedaluwarsa
+        if user.login_otp and code == user.login_otp and datetime.utcnow() < user.login_otp_expires:
+            # Kode benar, selesaikan proses login
+            user.login_otp = None
+            user.login_otp_expires = None
+            db.session.commit()
+
+            session.pop('login_verify_user_id', None) # Hapus session sementara
+            session['user_id'] = user.id
+            session['role'] = user.role
+            session.permanent = True
+            
+            logging.info(f"User '{user.username}' berhasil login setelah verifikasi OTP email.")
+            flash('Login berhasil!', 'success')
+
+            if user.role == 'administrator':
+                return redirect(url_for('admin_dashboard'))
+            else:
+                return redirect(url_for('index'))
+        else:
+            logging.warning(f"User '{user.username}' gagal verifikasi login OTP (kode salah atau kedaluwarsa).")
+            flash('Kode verifikasi salah atau sudah kedaluwarsa.', 'danger')
+
+    return render_template('verify_login.html')
 
 # Error handler kustom untuk Rate Limit (429)
 @app.errorhandler(429)
