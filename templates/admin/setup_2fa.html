@@ -1,173 +1,160 @@
 {% extends "layout.html" %} {% block title %}Setup Two-Factor Authentication{%
-  endblock %} {% block content %}
-  <div class="flex items-center justify-center min-h-screen bg-gray-100">
-    <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-      <h2 class="text-2xl font-bold text-center text-gray-800">Setup 2FA</h2>
-      <p class="text-center text-gray-600">
-        Pindai QR Code ini dengan aplikasi authenticator Anda (Google
-        Authenticator, Authy, dll).
-      </p>
-  <div x-data="{ sidebarOpen: false }" class="flex h-screen bg-gray-100">
-    <!-- Sidebar -->
-    <aside
-      class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-900 text-white transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-0"
-      :class="{'translate-x-0 ease-out': sidebarOpen, '-translate-x-full ease-in': !sidebarOpen}"
+endblock %} {% block content %}
+<div x-data="{ sidebarOpen: false }" class="flex h-screen bg-gray-100">
+  <!-- Sidebar -->
+  <aside
+    class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-900 text-white transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-0"
+    :class="{'translate-x-0 ease-out': sidebarOpen, '-translate-x-full ease-in': !sidebarOpen}"
+  >
+    <div class="flex items-center justify-center mt-8">
+      <div class="flex items-center">
+        <span class="text-white text-2xl font-semibold">Admin Panel</span>
+      </div>
+    </div>
+    <nav class="mt-10">
+      <a
+        href="{{ url_for('admin_dashboard') }}"
+        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
+      >
+        <i class="fas fa-tachometer-alt w-6"></i
+        ><span class="mx-3">Dasbor</span>
+      </a>
+      <a
+        href="{{ url_for('manage_users') }}"
+        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
+      >
+        <i class="fas fa-users w-6"></i><span class="mx-3">Pengguna</span>
+      </a>
+      <a
+        href="{{ url_for('view_logs') }}"
+        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
+      >
+        <i class="fas fa-clipboard-list w-6"></i><span class="mx-3">Logs</span>
+      </a>
+      <a
+        href="{{ url_for('logout') }}"
+        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
+      >
+        <i class="fas fa-sign-out-alt w-6"></i><span class="mx-3">Logout</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header
+      class="flex justify-between items-center py-4 px-6 bg-white border-b-4 border-blue-600"
     >
-      <div class="flex items-center justify-center mt-8">
-        <div class="flex items-center">
-          <span class="text-white text-2xl font-semibold">Admin Panel</span>
+      <div class="flex items-center">
+        <button @click="sidebarOpen = true" class="text-gray-500 lg:hidden">
+          <i class="fas fa-bars text-xl"></i>
+        </button>
+        <h1 class="text-2xl font-semibold text-gray-700 ml-4 lg:ml-0">
+          Aktifkan 2FA
+        </h1>
+      </div>
+      <div class="flex items-center">
+        <span class="mr-4"
+          >Selamat datang, <strong>{{ current_user.username }}</strong>!</span
+        >
+        <a
+          href="{{ url_for('logout') }}"
+          class="text-gray-500 hover:text-red-600"
+          title="Logout"
+        >
+          <i class="fas fa-sign-out-alt text-xl"></i>
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+      <div class="container mx-auto">
+        <div class="bg-white shadow-lg rounded-lg p-8 max-w-2xl mx-auto">
+          <div class="flex items-start mb-6">
+            <div class="flex-shrink-0">
+              <div
+                class="flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 text-blue-600"
+              >
+                <i class="fas fa-shield-alt text-xl"></i>
+              </div>
+            </div>
+            <div class="ml-4">
+              <h3 class="text-lg font-bold text-gray-900">
+                Aktifkan Two-Factor Authentication (2FA)
+              </h3>
+              <p class="text-gray-600 mt-1">
+                Pindai QR Code ini dengan aplikasi authenticator Anda (Google
+                Authenticator, Authy, dll).
+              </p>
+            </div>
+          </div>
+
+          <div class="flex justify-center mb-4">
+            <img
+              src="{{ qr_code }}"
+              alt="QR Code untuk 2FA"
+              class="border-4 border-gray-300 rounded-lg"
+            />
+          </div>
+
+          <p class="text-center text-sm text-gray-500">
+            Atau, masukkan kode ini secara manual:
+            <code
+              class="block bg-gray-200 text-gray-800 p-2 rounded-md font-mono my-2"
+              >{{ secret }}</code
+            >
+          </p>
+
+          <hr class="my-6" />
+
+          <p class="text-center text-gray-600 mb-4">
+            Masukkan kode 6-digit dari aplikasi Anda untuk menyelesaikan setup.
+          </p>
+
+          <form
+            method="POST"
+            action="{{ url_for('setup_2fa') }}"
+            class="space-y-4"
+          >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <div>
+              <label for="code" class="block text-sm font-medium text-gray-700"
+                >Kode Verifikasi</label
+              >
+              <input
+                id="code"
+                name="code"
+                type="text"
+                required
+                autofocus
+                pattern="\d{6}"
+                title="Masukkan 6 digit angka"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                class="w-full px-4 py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Verifikasi & Aktifkan
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-      <nav class="mt-10">
-        <a href="{{ url_for('admin_dashboard') }}" class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700">
-          <i class="fas fa-tachometer-alt w-6"></i><span class="mx-3">Dasbor</span>
-        </a>
-        <a href="{{ url_for('manage_users') }}" class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700">
-          <i class="fas fa-users w-6"></i><span class="mx-3">Pengguna</span>
-        </a>
-        <a href="{{ url_for('view_logs') }}" class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700">
-          <i class="fas fa-clipboard-list w-6"></i><span class="mx-3">Logs</span>
-        </a>
-        <a href="{{ url_for('logout') }}" class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700">
-          <i class="fas fa-sign-out-alt w-6"></i><span class="mx-3">Logout</span>
-        </a>
-      </nav>
-    </aside>
-  
-      <div class="flex justify-center">
-        <img
-          src="{{ qr_code }}"
-          alt="QR Code untuk 2FA"
-          class="border-4 border-gray-300 rounded-lg"
-        />
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Header -->
-      <header class="flex justify-between items-center py-4 px-6 bg-white border-b-4 border-blue-600">
-        <div class="flex items-center">
-          <button @click="sidebarOpen = true" class="text-gray-500 lg:hidden">
-            <i class="fas fa-bars text-xl"></i>
-          </button>
-          <h1 class="text-2xl font-semibold text-gray-700 ml-4 lg:ml-0">
-            Aktifkan 2FA
-          </h1>
-        </div>
-        <div class="flex items-center">
-          <span class="mr-4">Selamat datang, <strong>{{ current_user.username }}</strong>!</span>
-          <a href="{{ url_for('logout') }}" class="text-gray-500 hover:text-red-600" title="Logout">
-            <i class="fas fa-sign-out-alt text-xl"></i>
-          </a>
-        </div>
-      </header>
-  
-      <!-- Main Content -->
-      <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
-        <div class="container mx-auto">
-          <div class="bg-white shadow-lg rounded-lg p-8 max-w-2xl mx-auto">
-            <div class="flex items-start mb-6">
-              <div class="flex-shrink-0">
-                <div class="flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 text-blue-600">
-                  <i class="fas fa-shield-alt text-xl"></i>
-                </div>
-              </div>
-              <div class="ml-4">
-                <h3 class="text-lg font-bold text-gray-900">Aktifkan Two-Factor Authentication (2FA)</h3>
-                <p class="text-gray-600 mt-1">
-                  Pindai QR Code ini dengan aplikasi authenticator Anda (Google Authenticator, Authy, dll).
-                </p>
-              </div>
-            </div>
-  
-            <div class="flex justify-center mb-4">
-              <img src="{{ qr_code }}" alt="QR Code untuk 2FA" class="border-4 border-gray-300 rounded-lg" />
-            </div>
-  
-            <p class="text-center text-sm text-gray-500">
-              Atau, masukkan kode ini secara manual:
-              <code class="block bg-gray-200 text-gray-800 p-2 rounded-md font-mono my-2">{{ secret }}</code>
-            </p>
-  
-            <hr class="my-6" />
-  
-            <p class="text-center text-gray-600 mb-4">
-              Masukkan kode 6-digit dari aplikasi Anda untuk menyelesaikan setup.
-            </p>
-  
-            <form method="POST" action="{{ url_for('setup_2fa') }}" class="space-y-4">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-              <div>
-                <label for="code" class="block text-sm font-medium text-gray-700">Kode Verifikasi</label>
-                <input
-                  id="code"
-                  name="code"
-                  type="text"
-                  required
-                  autofocus
-                  pattern="\d{6}"
-                  title="Masukkan 6 digit angka"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <button
-                  type="submit"
-                  class="w-full px-4 py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Verifikasi & Aktifkan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </main>
-    </div>
+    </main>
   </div>
-  
-      <p class="text-center text-sm text-gray-500">
-        Atau, masukkan kode ini secara manual:
-        <code
-          class="block bg-gray-200 text-gray-800 p-2 rounded-md font-mono my-2"
-          >{{ secret }}</code
-        >
-      </p>
-  
-      <hr />
-  
-      <p class="text-center text-gray-600">
-        Masukkan kode 6-digit dari aplikasi Anda untuk menyelesaikan setup.
-      </p>
-  
-      <form method="POST" action="{{ url_for('setup_2fa') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <div>
-          <label for="code" class="text-sm font-medium text-gray-700"
-            >Kode Verifikasi</label
-          >
-          <input
-            id="code"
-            name="code"
-            type="text"
-            required
-            autofocus
-            pattern="\d{6}"
-            title="Masukkan 6 digit angka"
-            class="w-full px-3 py-2 mt-1 text-gray-700 bg-gray-200 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <button
-            type="submit"
-            class="w-full px-4 py-2 mt-4 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Verifikasi & Aktifkan
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-  <!-- Alpine.js untuk interaktivitas sidebar -->
-  <script src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.min.js" defer></script>
-  <!-- Font Awesome untuk ikon -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js" crossorigin="anonymous"></script>
-  {% endblock %}
-  
-  
+</div>
+<!-- Alpine.js untuk interaktivitas sidebar -->
+<script
+  src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.min.js"
+  defer
+></script>
+<!-- Font Awesome untuk ikon -->
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js"
+  crossorigin="anonymous"
+></script>
+{% endblock %}
