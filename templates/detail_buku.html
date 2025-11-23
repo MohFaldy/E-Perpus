@@ -1,43 +1,93 @@
 {% extends "layout.html" %} {% block title %}{{ buku.judul }}{% endblock %} {%
-block content %}
-<div class="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-  <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
-    <div class="p-8">
-      <!-- Tombol Kembali -->
-      <div class="mb-6">
-        <a
-          href="{{ url_for('index') }}"
-          class="text-blue-600 hover:text-blue-800 transition-colors"
-        >
-          &larr; Kembali ke Daftar Buku
-        </a>
-      </div>
-
-      <!-- Detail Buku -->
-      <h1 class="text-4xl font-bold text-gray-900 mb-2">{{ buku.judul }}</h1>
-      <p class="text-lg text-gray-600 mb-4">
-        oleh {{ buku.penulis }} - ({{ buku.tahun_terbit }})
-      </p>
-
-      <div class="border-t border-gray-200 my-6"></div>
-
-      <h2 class="text-xl font-semibold text-gray-800 mb-3">Deskripsi</h2>
-      <p class="text-gray-700 leading-relaxed whitespace-pre-wrap">
-        {{ buku.deskripsi or 'Deskripsi tidak tersedia.' }}
-      </p>
-
-      <div class="border-t border-gray-200 my-8"></div>
-
-      <!-- Tombol Aksi -->
-      <div class="flex justify-center">
-        <a
-          href="{{ url_for('download_buku', buku_id=buku.id) }}"
-          class="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-        >
-          📥 Unduh Buku
-        </a>
+  block content %}
+  <style>
+    .gradient-bg {
+      background: linear-gradient(-45deg, #0f172a, #1e3a8a, #3b82f6, #4f46e5);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+    }
+    @keyframes gradient {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .content-container {
+      animation: fadeIn 0.5s ease-out forwards;
+    }
+  </style>
+  
+  <div class="min-h-screen gradient-bg py-12 px-4 sm:px-6 lg:px-8 text-white">
+    <div
+      class="content-container max-w-4xl mx-auto bg-slate-800/50 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
+    >
+      <div class="p-8 md:p-12">
+        <!-- Tombol Kembali -->
+        <div class="mb-6">
+          <a
+            href="{{ url_for('index') }}"
+            class="inline-flex items-center text-blue-300 hover:text-white transition-colors"
+          >
+            <svg
+              class="w-5 h-5 mr-2"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="2"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"
+              />
+            </svg>
+            Kembali ke Daftar Buku
+          </a>
+        </div>
+  
+        <!-- Detail Buku -->
+        <h1 class="text-4xl font-bold text-white mb-2">{{ buku.judul }}</h1>
+        <p class="text-lg text-blue-200 mb-4">
+          oleh {{ buku.penulis }} - ({{ buku.tahun_terbit }})
+        </p>
+  
+        <div class="border-t border-white/20 my-6"></div>
+  
+        <h2 class="text-xl font-semibold text-white mb-3">Deskripsi</h2>
+        <p class="text-gray-300 leading-relaxed whitespace-pre-wrap">
+          {{ buku.deskripsi or 'Deskripsi tidak tersedia.' }}
+        </p>
+  
+        <div class="border-t border-white/20 my-8"></div>
+  
+        <!-- Tombol Aksi -->
+        <div class="flex justify-center">
+          <a
+            href="{{ url_for('download_buku', buku_id=buku.id) }}"
+            class="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-bold rounded-lg text-blue-700 bg-white hover:bg-blue-100 transition-colors shadow-lg"
+          >
+            📥 Unduh Buku
+          </a>
+        </div>
       </div>
     </div>
   </div>
-</div>
-{% endblock %}
+  {% endblock %}
+  
+  
