@@ -78,7 +78,24 @@
         >
           {{ message }}
         </div>
-        {% endfor %} {% endif %} {% endwith %}
+        {% endfor %} {% endif %} {% endwith %} {% if current_user.role ==
+        'superadmin' %}
+        <div class="flex justify-end mb-4">
+          <form
+            action="{{ url_for('delete_logs') }}"
+            method="POST"
+            onsubmit="return confirm('Apakah Anda yakin ingin menghapus semua log? Tindakan ini tidak dapat dibatalkan.');"
+          >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button
+              type="submit"
+              class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+            >
+              <i class="fas fa-trash-alt mr-2"></i>Hapus Semua Log
+            </button>
+          </form>
+        </div>
+        {% endif %}
 
         <!-- Tabel Log -->
         <div class="bg-white shadow-lg rounded-lg overflow-x-auto">

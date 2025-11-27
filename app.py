@@ -48,7 +48,7 @@ if not database_url:
     raise RuntimeError("FATAL ERROR: Variabel lingkungan 'DATABASE_URL' tidak ditemukan atau kosong. Pastikan sudah diatur di dashboard Railway.")
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
 
 # --- Konfigurasi Keamanan Cookie Sesi ---
 app.config['SESSION_COOKIE_SECURE'] = True  # Hanya kirim cookie melalui HTTPS
@@ -143,14 +143,16 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False) # Simpan password yang sudah di-hash!
-    role = db.Column(db.String(20), nullable=False, default='pengguna') # 'administrator' atau 'pengguna'
+    # Gunakan Enum untuk peran yang lebih terstruktur
+    role = db.Column(db.Enum('superadmin', 'administrator', 'pengguna', name='user_roles'), nullable=False, default='pengguna')
     # Kolom baru untuk verifikasi
     is_verified = db.Column(db.Boolean, nullable=False, default=False)
-    verification_code = db.Column(db.String(6), nullable=True)
+    verification_code = db.Column(db.String(6), nullable=True) 
     verification_code_expires = db.Column(db.DateTime, nullable=True)
     otp_secret = db.Column(db.String(32), nullable=True, unique=True)
     login_otp = db.Column(db.String(6), nullable=True)
     login_otp_expires = db.Column(db.DateTime, nullable=True)
+    bypass_login_otp = db.Column(db.Boolean, nullable=False, default=False) # Kolom baru
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -201,7 +203,7 @@ def send_verification_email(user):
                     },
                     "To": [{"Email": user.email, "Name": user.username}],
                     "Subject": "Kode Verifikasi Akun E-Perpus",
-                    "TextPart": f"Halo {user.username},\n\nGunakan kode berikut untuk memverifikasi akun Anda:\n\n{user.verification_code}\n\nKode ini akan kedaluwarsa dalam 10 menit."
+                    "TextPart": f"Halo {user.username},\n\nGunakan kode berikut untuk memverifikasi akun Anda:\n\n{user.verification_code}\n\nKode ini akan kedaluwarsa dalam 30 detik."
                 }
             ]
         }
@@ -256,7 +258,7 @@ def send_login_otp_email(user):
                 "From": {"Email": sender_email, "Name": "E-Perpus SMAN 1 Tinombo"},
                 "To": [{"Email": user.email, "Name": user.username}],
                 "Subject": "Kode Verifikasi Login Anda",
-                "TextPart": f"Halo {user.username},\n\nSeseorang mencoba login ke akun Anda. Gunakan kode berikut untuk menyelesaikan proses login:\n\n{user.login_otp}\n\nKode ini hanya berlaku selama 5 menit. Jika ini bukan Anda, Anda dapat mengabaikan email ini."
+                "TextPart": f"Halo {user.username},\n\nSeseorang mencoba login ke akun Anda. Gunakan kode berikut untuk menyelesaikan proses login:\n\n{user.login_otp}\n\nKode ini hanya berlaku selama 30 detik. Jika ini bukan Anda, Anda dapat mengabaikan email ini."
             }]
         }
         result = mailjet.send.create(data=data)
@@ -369,7 +371,7 @@ def login():
                 # Pastikan kode ada dan belum kedaluwarsa, atau buat yang baru
                 if not user.verification_code or datetime.utcnow() > user.verification_code_expires:
                     user.verification_code = generate_verification_code()
-                    user.verification_code_expires = datetime.utcnow() + timedelta(minutes=10)
+                    user.verification_code_expires = datetime.utcnow() + timedelta(seconds=30)
                     db.session.commit()
                     send_verification_email(user) # Kirim email
                 
@@ -382,10 +384,20 @@ def login():
                 session['2fa_user_id'] = user.id  # Simpan ID user untuk diverifikasi
                 logging.info(f"Admin '{username}' diarahkan ke verifikasi 2FA.")
                 return redirect(url_for('verify_2fa'))
+            # 3. Jika user adalah administrator dan Superadmin telah mengaktifkan bypass login OTP
+            if user.role == 'administrator' and user.bypass_login_otp:
+                session['user_id'] = user.id
+                session['role'] = user.role
+                session.permanent = True
+                user.bypass_login_otp = False # Reset flag setelah berhasil login (untuk keamanan)
+                db.session.commit()
+                logging.info(f"Admin '{username}' (ID: {user.id}) berhasil login dengan bypass OTP email oleh Superadmin.")
+                flash('Login berhasil! Verifikasi email login telah dilewati oleh Superadmin.', 'success')
+                return redirect(url_for('admin_dashboard'))
             # 3. Untuk SEMUA PENGGUNA LAINNYA (pengguna biasa atau admin tanpa 2FA),
             #    wajibkan verifikasi login via email SETIAP SAAT.
             user.login_otp = generate_verification_code()
-            user.login_otp_expires = datetime.utcnow() + timedelta(minutes=5) # OTP berlaku 5 menit
+            user.login_otp_expires = datetime.utcnow() + timedelta(seconds=30) # OTP berlaku 5 menit
             db.session.commit()
             send_login_otp_email(user)
             session['login_verify_user_id'] = user.id # Simpan ID user sementara
@@ -461,7 +473,7 @@ def verify_login():
             logging.info(f"User '{user.username}' berhasil login setelah verifikasi OTP email.")
             flash('Login berhasil!', 'success')
 
-            if user.role == 'administrator':
+            if user.role in ['administrator', 'superadmin']:
                 return redirect(url_for('admin_dashboard'))
             else:
                 return redirect(url_for('index'))
@@ -534,8 +546,8 @@ def register():
         hashed_password = generate_password_hash(password)
 
         # Tentukan role: user pertama yang mendaftar akan menjadi administrator
-        role = 'administrator' if User.query.count() == 0 else 'pengguna'
-
+        role = 'superadmin' if User.query.count() == 0 else 'pengguna'
+        
         # Buat user baru dan simpan ke database
         new_user = User(username=username, email=email, password=hashed_password, role=role)
         db.session.add(new_user)
@@ -681,9 +693,9 @@ def resend_code():
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Cek apakah user adalah admin
-        if session.get('role') != 'administrator':
-            logging.warning(f"Akses DITOLAK (403) - Bukan Admin. User ID: {session.get('user_id')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
+        # Cek apakah user adalah admin ATAU superadmin
+        if session.get('role') not in ['administrator', 'superadmin']:
+            logging.warning(f"Akses DITOLAK (403) - Peran tidak memadai. User ID: {session.get('user_id')}, Role: {session.get('role')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
             abort(403)
         
         # Cek apakah 2FA sudah dilewati untuk sesi ini
@@ -693,6 +705,17 @@ def admin_required(f):
             flash('Anda harus menyelesaikan verifikasi dua langkah untuk mengakses halaman ini.', 'warning')
             return redirect(url_for('verify_2fa'))
 
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Decorator baru untuk memastikan HANYA superadmin yang bisa akses
+def superadmin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Cek apakah user adalah superadmin
+        if session.get('role') != 'superadmin':
+            logging.warning(f"Akses DITOLAK (403) - Bukan Super Admin. User ID: {session.get('user_id')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
+            abort(403) # Langsung tolak akses
         return f(*args, **kwargs)
     return decorated_function
 
@@ -834,6 +857,133 @@ def delete_user(user_id):
     logging.info(f"Admin (ID: {session.get('user_id')}) telah menghapus pengguna '{username}' (ID: {user_id}).")
     flash(f'Pengguna {username} berhasil dihapus.', 'success')
     return redirect(url_for('manage_users'))
+
+@app.route('/admin/user/promote/<int:user_id>', methods=['POST'])
+@superadmin_required
+def promote_user(user_id):
+    """Memproses promosi pengguna menjadi administrator."""
+    user_to_promote = User.query.get_or_404(user_id)
+    
+    # Pastikan hanya 'pengguna' yang bisa dipromosikan
+    if user_to_promote.role != 'pengguna': # Validasi 1
+        flash('Hanya pengguna biasa yang dapat dipromosikan menjadi administrator.', 'warning')
+        return redirect(url_for('manage_users'))
+    
+    if user_to_promote.id == session.get('user_id'): # Validasi 2
+        flash('Anda tidak dapat mempromosikan diri sendiri.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    user_to_promote.role = 'administrator'
+    db.session.commit()
+    
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah mempromosikan '{user_to_promote.username}' (ID: {user_id}) menjadi Administrator.")
+    flash(f"Pengguna '{user_to_promote.username}' berhasil dipromosikan menjadi Administrator.", 'success')
+    return redirect(url_for('manage_users'))
+
+@app.route('/admin/user/demote/<int:user_id>', methods=['POST'])
+@superadmin_required
+def demote_user(user_id):
+    """Memproses demosi administrator menjadi pengguna."""
+    user_to_demote = User.query.get_or_404(user_id)
+
+    if user_to_demote.role != 'administrator':
+        flash('Hanya administrator yang dapat diturunkan menjadi pengguna biasa.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    if user_to_demote.id == session.get('user_id'): # Validasi 2
+        flash('Anda tidak dapat mendemosikan diri sendiri.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    user_to_demote.role = 'pengguna'
+    db.session.commit()
+
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah menurunkan '{user_to_demote.username}' (ID: {user_id}) menjadi Pengguna.")
+    flash(f"Administrator '{user_to_demote.username}' berhasil diturunkan menjadi Pengguna.", 'success') # Pesan lebih spesifik
+    return redirect(url_for('manage_users'))
+
+@app.route('/admin/user/disable_verification/<int:user_id>', methods=['POST'])
+@superadmin_required
+def disable_verification(user_id):
+    """Menonaktifkan verifikasi email untuk administrator."""
+    user_to_unverify = User.query.get_or_404(user_id)
+
+    # Pastikan hanya administrator yang bisa di-unverify
+    if user_to_unverify.role != 'administrator':
+        flash('Hanya administrator yang dapat dinonaktifkan verifikasi emailnya.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    user_to_unverify.is_verified = True  # Nonaktifkan verifikasi email
+    db.session.commit()
+
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah menonaktifkan verifikasi email untuk '{user_to_unverify.username}' (ID: {user_id}).")
+    flash(f"Verifikasi email berhasil dinonaktifkan untuk Administrator '{user_to_unverify.username}'.", 'success')
+    return redirect(url_for('manage_users'))
+
+@app.route('/admin/user/force_disable_2fa/<int:user_id>', methods=['POST'])
+@superadmin_required
+def force_disable_2fa(user_id):
+    """Memaksa menonaktifkan 2FA (aplikasi authenticator) untuk administrator."""
+    user_to_disable_2fa = User.query.get_or_404(user_id)
+
+    # Pastikan hanya administrator yang bisa di-disable 2FA-nya
+    if user_to_disable_2fa.role != 'administrator':
+        flash('Hanya administrator yang dapat dinonaktifkan 2FA-nya.', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    # Pastikan 2FA memang aktif untuk pengguna ini
+    if not user_to_disable_2fa.otp_secret:
+        flash(f"2FA untuk '{user_to_disable_2fa.username}' memang sudah tidak aktif.", 'info')
+        return redirect(url_for('manage_users'))
+
+    user_to_disable_2fa.otp_secret = None  # Hapus secret 2FA
+    db.session.commit()
+
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah memaksa menonaktifkan 2FA untuk '{user_to_disable_2fa.username}' (ID: {user_id}).")
+    flash(f"2FA berhasil dinonaktifkan secara paksa untuk Administrator '{user_to_disable_2fa.username}'.", 'success')
+    return redirect(url_for('manage_users'))
+
+
+@app.route('/admin/user/reset_login_session/<int:user_id>', methods=['POST'])
+@superadmin_required
+def reset_login_session(user_id):
+    """Membersihkan OTP login yang macet untuk seorang administrator."""
+    user_to_reset = User.query.get_or_404(user_id)
+
+    # Pastikan hanya sesi administrator yang bisa di-reset
+    if user_to_reset.role != 'administrator':
+        flash('Hanya sesi login administrator yang dapat direset.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    # Hapus kode OTP login yang mungkin sedang aktif/macet
+    user_to_reset.login_otp = None
+    user_to_reset.login_otp_expires = None
+    db.session.commit()
+
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah mereset sesi login untuk '{user_to_reset.username}' (ID: {user_id}).")
+    flash(f"Sesi login yang sedang berlangsung untuk '{user_to_reset.username}' telah direset. Mereka dapat mencoba login kembali.", 'success')
+    return redirect(url_for('manage_users'))
+
+
+@app.route('/admin/user/toggle_bypass_login_otp/<int:user_id>', methods=['POST'])
+@superadmin_required
+def toggle_bypass_login_otp(user_id):
+    """Mengaktifkan atau menonaktifkan bypass verifikasi login OTP untuk administrator."""
+    user_to_toggle = User.query.get_or_404(user_id)
+
+    # Pastikan hanya administrator yang bisa di-toggle bypass-nya
+    if user_to_toggle.role != 'administrator':
+        flash('Hanya administrator yang dapat diatur bypass verifikasi loginnya.', 'danger')
+        return redirect(url_for('manage_users'))
+
+    user_to_toggle.bypass_login_otp = not user_to_toggle.bypass_login_otp # Toggle status
+    db.session.commit()
+
+    action = "mengaktifkan" if user_to_toggle.bypass_login_otp else "menonaktifkan"
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah {action} bypass verifikasi login OTP untuk '{user_to_toggle.username}' (ID: {user_id}).")
+    flash(f"Bypass verifikasi login OTP untuk '{user_to_toggle.username}' berhasil {action}.", 'success')
+    return redirect(url_for('manage_users'))
+
+
 
 
 # Rute Tambah Buku
@@ -981,16 +1131,16 @@ def view_logs():
     return render_template('admin/logs.html', logs=parsed_logs)
         
 
-# @app.route('/admin/logs/delete', methods=['POST'])
-# @admin_required
-# def delete_logs():
-#     log_file = 'e-perpus.log'
-#     try:
-#         open(log_file, 'w').close()  # Kosongkan isi file
-#         flash('Semua log berhasil dihapus.', 'success')
-#     except Exception as e:
-#         flash(f'Gagal menghapus log: {str(e)}', 'danger')
-#     return redirect(url_for('view_logs'))
+@app.route('/admin/logs/delete', methods=['POST'])
+@superadmin_required
+def delete_logs():
+    log_file = 'e-perpus.log'
+    try:
+        open(log_file, 'w').close()  # Kosongkan isi file
+        flash('Semua log berhasil dihapus.', 'success')
+    except Exception as e:
+        flash(f'Gagal menghapus log: {str(e)}', 'danger')
+    return redirect(url_for('view_logs'))
 
 
 # --- Middleware untuk Header Keamanan ---
