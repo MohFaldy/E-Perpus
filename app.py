@@ -660,6 +660,49 @@ def verify():
 
     return render_template('verify.html')
 
+@app.route('/change_email', methods=['GET', 'POST'])
+def change_email():
+    """Memungkinkan pengguna yang belum terverifikasi untuk mengubah email mereka."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user = User.query.get(session['user_id'])
+    if not user or user.is_verified:
+        # Jika user tidak ada atau sudah terverifikasi, fitur ini tidak relevan
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        new_email = sanitize_string(request.form.get('new_email'), max_length=120)
+        password = request.form.get('password')
+
+        # 1. Verifikasi password untuk keamanan
+        if not check_password_hash(user.password, password):
+            flash('Password yang Anda masukkan salah.', 'danger')
+            return redirect(url_for('change_email'))
+
+        # 2. Cek apakah email baru sudah digunakan
+        existing_email = User.query.filter(User.email == new_email, User.id != user.id).first()
+        if existing_email:
+            flash('Email baru tersebut sudah terdaftar. Silakan gunakan email lain.', 'danger')
+            return redirect(url_for('change_email'))
+
+        # 3. Jika semua validasi lolos, update email dan kirim kode baru
+        user.email = new_email
+        user.verification_code = generate_verification_code()
+        user.verification_code_expires = datetime.utcnow() + timedelta(seconds=30)
+        db.session.commit()
+
+        if send_verification_email(user):
+            logging.info(f"User '{user.username}' (ID: {user.id}) mengubah email ke '{new_email}' dan kode baru dikirim.")
+            flash('Email berhasil diubah. Kode verifikasi baru telah dikirim ke alamat email baru Anda.', 'success')
+        else:
+            logging.error(f"Gagal mengirim email verifikasi setelah user '{user.username}' (ID: {user.id}) mengubah email.")
+            flash('Email berhasil diubah, namun kami gagal mengirim kode verifikasi. Silakan coba fitur "Kirim Ulang".', 'warning')
+
+        return redirect(url_for('verify'))
+
+    return render_template('change_email.html')
+
 @app.route('/resend_code')
 def resend_code():
     if 'user_id' not in session:
