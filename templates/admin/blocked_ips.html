@@ -1,5 +1,5 @@
-{% extends "layout.html" %} {% block title %}Log Aktivitas Pengguna{% endblock
-%} {% block content %}
+{% extends "layout.html" %} {% block title %}Kelola IP Diblokir{% endblock %} {%
+block content %}
 <div x-data="{ sidebarOpen: false }" class="flex h-screen bg-gray-100">
   <!-- Sidebar -->
   <aside
@@ -25,19 +25,17 @@
       >
         <i class="fas fa-users w-6"></i><span class="mx-3">Pengguna</span>
       </a>
-      <!-- HANYA TAMPILKAN UNTUK SUPERADMIN -->
-      {% if current_user.role == 'superadmin' %}
+      <!-- Link Aktif -->
       <a
         href="{{ url_for('manage_blocked_ips') }}"
-        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
+        class="flex items-center mt-4 py-2 px-6 bg-gray-700 bg-opacity-50 text-gray-100"
       >
         <i class="fas fa-user-shield w-6"></i
         ><span class="mx-3">IP Diblokir</span>
       </a>
-      {% endif %}
       <a
         href="{{ url_for('view_logs') }}"
-        class="flex items-center mt-4 py-2 px-6 bg-gray-700 bg-opacity-50 text-gray-100 hover:bg-gray-700"
+        class="flex items-center mt-4 py-2 px-6 text-gray-100 hover:bg-gray-700"
       >
         <i class="fas fa-clipboard-list w-6"></i><span class="mx-3">Logs</span>
       </a>
@@ -60,7 +58,7 @@
           <i class="fas fa-bars text-xl"></i>
         </button>
         <h1 class="text-2xl font-semibold text-gray-700 ml-4 lg:ml-0">
-          Log Aktivitas Pengguna
+          Kelola IP Diblokir
         </h1>
       </div>
       <div class="flex items-center">
@@ -88,76 +86,55 @@
         >
           {{ message }}
         </div>
-        {% endfor %} {% endif %} {% endwith %} {% if current_user.role ==
-        'superadmin' %}
-        <div class="flex justify-end mb-4">
-          <form
-            action="{{ url_for('delete_logs') }}"
-            method="POST"
-            onsubmit="return confirm('Apakah Anda yakin ingin menghapus semua log? Tindakan ini tidak dapat dibatalkan.');"
-          >
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-            <button
-              type="submit"
-              class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              <i class="fas fa-trash-alt mr-2"></i>Hapus Semua Log
-            </button>
-          </form>
-        </div>
-        {% endif %}
+        {% endfor %} {% endif %} {% endwith %}
 
-        <!-- Tabel Log -->
         <div class="bg-white shadow-lg rounded-lg overflow-x-auto">
           <table class="min-w-full whitespace-nowrap">
             <thead class="bg-gray-50">
               <tr
                 class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
               >
-                <th class="px-6 py-3">Waktu</th>
-                <th class="px-6 py-3">Level</th>
-                <th class="px-6 py-3">Aktivitas</th>
                 <th class="px-6 py-3">Alamat IP</th>
+                <th class="px-6 py-3">Alasan</th>
+                <th class="px-6 py-3">Waktu Diblokir</th>
+                <th class="px-6 py-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
-              {% for log in logs %}
+              {% for ip in blocked_ips %}
               <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 text-sm font-mono text-gray-900">
+                  {{ ip.ip_address }}
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">{{ ip.reason }}</td>
                 <td class="px-6 py-4 text-sm text-gray-500">
-                  {{ log.timestamp }}
+                  {{ ip.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC
                 </td>
-                <td class="px-6 py-4">
-                  {% if log.level == 'WARNING' or log.level == 'ERROR' %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800"
+                <td class="px-6 py-4 text-center">
+                  <form
+                    action="{{ url_for('unblock_ip', block_id=ip.id) }}"
+                    method="POST"
+                    onsubmit="return confirm('Apakah Anda yakin ingin membuka blokir IP ini?');"
                   >
-                    {{ log.level }}
-                  </span>
-                  {% elif log.level == 'INFO' %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800"
-                  >
-                    {{ log.level }}
-                  </span>
-                  {% else %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800"
-                  >
-                    {{ log.level }}
-                  </span>
-                  {% endif %}
+                    <input
+                      type="hidden"
+                      name="csrf_token"
+                      value="{{ csrf_token() }}"
+                    />
+                    <button
+                      type="submit"
+                      class="text-green-600 hover:text-green-800"
+                      title="Buka Blokir IP"
+                    >
+                      <i class="fas fa-check-circle"></i> Buka Blokir
+                    </button>
+                  </form>
                 </td>
-                <td
-                  class="px-6 py-4 text-sm text-gray-700 break-words max-w-lg whitespace-normal"
-                >
-                  {{ log.message }}
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-500">{{ log.ip }}</td>
               </tr>
               {% else %}
               <tr>
                 <td colspan="4" class="text-center py-10 text-gray-500">
-                  Tidak ada log aktivitas pengguna yang ditemukan.
+                  Tidak ada alamat IP yang sedang diblokir.
                 </td>
               </tr>
               {% endfor %}
@@ -169,12 +146,11 @@
   </div>
 </div>
 
-<!-- Alpine.js untuk interaktivitas sidebar -->
+<!-- Alpine.js & Font Awesome -->
 <script
   src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.min.js"
   defer
 ></script>
-<!-- Font Awesome untuk ikon -->
 <script
   src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js"
   crossorigin="anonymous"

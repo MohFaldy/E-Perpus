@@ -1,30 +1,36 @@
+import os
+from dotenv import load_dotenv
 from mailjet_rest import Client
 
-api_key = '27b590b8f1a01b0ab9f3dff6ac16536f'
-api_secret = '2047a7fca67037c53bd01ce49af798a0'
+# Muat variabel dari file .env
+load_dotenv()
+
+api_key = os.environ.get('MAILJET_API_KEY')
+api_secret = os.environ.get('MAILJET_SECRET_KEY')
+
+# PENTING: Ganti dengan email yang SUDAH ANDA VERIFIKASI di Mailjet
+sender_email = os.environ.get('MAIL_SENDER_EMAIL') 
+
+# PENTING: Ganti dengan alamat email pribadi Anda untuk menerima tes
+recipient_email = "mohfaldi765@gmail.com" 
 
 mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 
 data = {
   'Messages': [
     {
-      "From": {
-        "Email": "noreply@domainkamu.com",
-        "Name": "E-Perpus SMAN 1 Tinombo"
-      },
+      "From": {"Email": sender_email, "Name": "Tes E-Perpus"},
       "To": [
-        {
-          "Email": "emailtujuan@gmail.com",
-          "Name": "Faldy"
-        }
+        {"Email": recipient_email, "Name": "Penerima Tes"}
       ],
       "Subject": "Tes Kirim Email via Mailjet REST API",
-      "TextPart": "Halo Faldy, ini pengujian dari Mailjet API.",
-      "HTMLPart": "<h3>Halo Faldy!</h3><p>Ini pengujian dari <b>Mailjet REST API</b>.</p>"
+      "TextPart": "Halo, jika Anda menerima ini, koneksi Mailjet berhasil!",
     }
   ]
 }
-
 result = mailjet.send.create(data=data)
 print(result.status_code)
 print(result.json())
+
+print(f"\nSkrip selesai. Cek email di {recipient_email} (termasuk folder spam).")
+

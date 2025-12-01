@@ -73,12 +73,15 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 # PENTING: Gunakan "App Password" dari akun Google Anda, bukan password utama.
 # Kunjungi: https://myaccount.google.com/apppasswords
 # --- Konfigurasi Flask-Mail untuk Mailjet ---
-app.config['MAIL_SERVER'] = 'in-v3.mailjet.com'
+# app.config['MAIL_SERVER'] = 'in-v3.mailjet.com'
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USE_SSL'] = False
-app.config['MAIL_USERNAME'] = os.environ.get('MAILJET_API_KEY')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAILJET_SECRET_KEY')
+# app.config['MAIL_USERNAME'] = os.environ.get('MAILJET_API_KEY')
+# app.config['MAIL_PASSWORD'] = os.environ.get('MAILJET_SECRET_KEY')
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 # Pastikan email ini sudah diverifikasi sebagai "Sender" di akun Mailjet Anda.
 app.config['MAIL_DEFAULT_SENDER'] = (
     'E-Perpus SMAN 1 Tinombo',
@@ -157,6 +160,19 @@ class User(db.Model):
     def __repr__(self):
         return f'<User {self.username}>'
 
+
+class BlockedIP(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), unique=True, nullable=False) # Cukup untuk IPv4 dan IPv6
+    reason = db.Column(db.String(255), nullable=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<BlockedIP {self.ip_address}>'
+
+
+
+
 # Jalankan `db.create_all()` sekali dari terminal Python untuk membuat tabel
 # from app import app, db
 # with app.app_context():
@@ -183,37 +199,14 @@ def generate_verification_code():
 
 def send_verification_email(user):
     """Mengirim email verifikasi ke pengguna."""
-        # --- GANTI DARI FLASK-MAIL KE MAILJET API ---
+    # --- MENGGUNAKAN FLASK-MAIL (UNTUK GMAIL) ---
     try:
-        api_key = os.environ.get('MAILJET_API_KEY')
-        api_secret = os.environ.get('MAILJET_SECRET_KEY')
-        sender_email = os.environ.get('MAIL_SENDER_EMAIL')
-
-        if not all([api_key, api_secret, sender_email]):
-            logging.error("Variabel lingkungan Mailjet tidak lengkap.")
-            return False
-
-        mailjet = MailjetClient(auth=(api_key, api_secret), version='v3.1')
-        data = {
-            'Messages': [
-                {
-                    "From": {
-                        "Email": sender_email,
-                        "Name": "E-Perpus SMAN 1 Tinombo"
-                    },
-                    "To": [{"Email": user.email, "Name": user.username}],
-                    "Subject": "Kode Verifikasi Akun E-Perpus",
-                    "TextPart": f"Halo {user.username},\n\nGunakan kode berikut untuk memverifikasi akun Anda:\n\n{user.verification_code}\n\nKode ini akan kedaluwarsa dalam 30 detik."
-                }
-            ]
-        }
-        result = mailjet.send.create(data=data)
-        if result.status_code != 200:
-            logging.error(f"Mailjet API Error: {result.status_code} - {result.json()}")
-            return False
+        msg = Message('Kode Verifikasi Akun E-Perpus', recipients=[user.email])
+        msg.body = f"Halo {user.username},\n\nGunakan kode berikut untuk memverifikasi akun Anda:\n\n{user.verification_code}\n\nKode ini akan kedaluwarsa dalam 5 menit."
+        mail.send(msg)
         return True
     except Exception as e:
-        logging.error(f"Gagal mengirim email verifikasi ke {user.email} via Mailjet API: {e}") # Untuk debugging
+        logging.error(f"Gagal mengirim email verifikasi ke {user.email} via Flask-Mail/Gmail: {e}")
         return False
     
 def send_password_reset_email(user):
@@ -223,56 +216,27 @@ def send_password_reset_email(user):
     reset_url = url_for('reset_with_token', token=token, _external=True)
         # --- UPDATE: Menggunakan Mailjet API, bukan Flask-Mail ---
     try:
-        api_key = os.environ.get('MAILJET_API_KEY')
-        api_secret = os.environ.get('MAILJET_SECRET_KEY')
-        sender_email = os.environ.get('MAIL_SENDER_EMAIL')
-
-        mailjet = MailjetClient(auth=(api_key, api_secret), version='v3.1')
-        data = {
-            'Messages': [{
-                "From": {"Email": sender_email, "Name": "E-Perpus SMAN 1 Tinombo"},
-                "To": [{"Email": user.email, "Name": user.username}],
-                "Subject": "Reset Password Akun E-Perpus",
-                "TextPart": f"Halo {user.username},\n\nUntuk mereset password Anda, silakan kunjungi link berikut:\n{reset_url}\n\nJika Anda tidak meminta reset password, abaikan email ini. Link ini akan kedaluwarsa dalam 30 menit."
-            }]
-        }
-        result = mailjet.send.create(data=data)
-        if result.status_code != 200:
-            logging.error(f"Mailjet API Error (Password Reset): {result.status_code} - {result.json()}")
-            return False
+        msg = Message('Reset Password Akun E-Perpus', recipients=[user.email])
+        msg.body = f"Halo {user.username},\n\nUntuk mereset password Anda, silakan kunjungi link berikut:\n{reset_url}\n\nJika Anda tidak meminta reset password, abaikan email ini. Link ini akan kedaluwarsa dalam 30 menit."
+        mail.send(msg)
         return True
     except Exception as e:
-        logging.error(f"Gagal mengirim email reset password ke {user.email} via Mailjet API: {e}")
+        logging.error(f"Gagal mengirim email reset password ke {user.email} via Flask-Mail/Gmail: {e}")
         return False
 
 def send_login_otp_email(user):
     """Mengirim kode OTP untuk verifikasi login."""
     try:
-        api_key = os.environ.get('MAILJET_API_KEY')
-        api_secret = os.environ.get('MAILJET_SECRET_KEY')
-        sender_email = os.environ.get('MAIL_SENDER_EMAIL')
-
-        mailjet = MailjetClient(auth=(api_key, api_secret), version='v3.1')
-        data = {
-            'Messages': [{
-                "From": {"Email": sender_email, "Name": "E-Perpus SMAN 1 Tinombo"},
-                "To": [{"Email": user.email, "Name": user.username}],
-                "Subject": "Kode Verifikasi Login Anda",
-                "TextPart": f"Halo {user.username},\n\nSeseorang mencoba login ke akun Anda. Gunakan kode berikut untuk menyelesaikan proses login:\n\n{user.login_otp}\n\nKode ini hanya berlaku selama 30 detik. Jika ini bukan Anda, Anda dapat mengabaikan email ini."
-            }]
-        }
-        result = mailjet.send.create(data=data)
-        if result.status_code != 200:
-            logging.error(f"Mailjet API Error (Login OTP): {result.status_code} - {result.json()}")
-            return False
+        msg = Message('Kode Verifikasi Login Anda', recipients=[user.email])
+        msg.body = f"Halo {user.username},\n\nSeseorang mencoba login ke akun Anda. Gunakan kode berikut untuk menyelesaikan proses login:\n\n{user.login_otp}\n\nKode ini hanya berlaku selama 5 menit. Jika ini bukan Anda, Anda dapat mengabaikan email ini."
+        mail.send(msg)
         return True
     except Exception as e:
-        logging.error(f"Gagal mengirim email login OTP ke {user.email} via Mailjet API: {e}")
+        logging.error(f"Gagal mengirim email login OTP ke {user.email} via Flask-Mail/Gmail: {e}")
         return False
 
-# app.py (lanjutan...)
+# --- Decorators ---
 
-# --- Rute Aplikasi ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -294,6 +258,60 @@ def login_required(f):
             return redirect(url_for('verify'))
         return f(*args, **kwargs)
     return decorated_function
+
+# Decorator untuk memastikan hanya admin yang bisa akses
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Cek apakah user adalah admin ATAU superadmin
+        if session.get('role') not in ['administrator', 'superadmin']:
+            logging.warning(f"Akses DITOLAK (403) - Peran tidak memadai. User ID: {session.get('user_id')}, Role: {session.get('role')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
+            abort(403)
+        
+        # Cek apakah 2FA sudah dilewati untuk sesi ini
+        user = User.query.get(session.get('user_id'))
+        if user and user.otp_secret and not session.get('2fa_passed'):
+            logging.warning(f"Akses DITOLAK (403) - 2FA Belum Dilewati. User ID: {user.id}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
+            flash('Anda harus menyelesaikan verifikasi dua langkah untuk mengakses halaman ini.', 'warning')
+            return redirect(url_for('verify_2fa'))
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# Decorator baru untuk memastikan HANYA superadmin yang bisa akses
+def superadmin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Cek apakah user adalah superadmin
+        if session.get('role') != 'superadmin':
+            logging.warning(f"Akses DITOLAK (403) - Bukan Super Admin. User ID: {session.get('user_id')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
+            abort(403) # Langsung tolak akses
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.before_request
+def check_if_blocked():
+    """
+    Middleware untuk memeriksa setiap request apakah berasal dari IP yang diblokir.
+    Ini berjalan sebelum setiap handler rute.
+    """
+    # Dapatkan IP asli pengguna, bahkan di belakang proxy
+    user_ip = request.remote_addr
+    
+    # Periksa apakah IP ada di tabel blokir
+    is_blocked = BlockedIP.query.filter_by(ip_address=user_ip).first()
+
+    if is_blocked:
+        # PENTING: Izinkan superadmin yang sudah login untuk tetap mengakses
+        # halaman admin agar mereka bisa membuka blokir.
+        if session.get('role') == 'superadmin' and request.path.startswith('/admin'):
+            return # Lanjutkan request jika superadmin
+
+        # Jika bukan superadmin atau mencoba akses halaman non-admin, blokir.
+        logging.critical(f"Akses DIBLOKIR dari IP: {user_ip} ke path: {request.path}. Alasan: Brute-force.")
+        abort(403) # Tampilkan halaman 'Forbidden'
 
 
 # Rute Halaman Utama (Untuk Pengguna)
@@ -405,6 +423,26 @@ def login():
             return redirect(url_for('verify_login'))
         else:
             logging.warning(f"Login gagal untuk username: '{username}' dari IP: {request.remote_addr}")
+            # --- LOGIKA BLOKIR IP SETELAH 5 KALI GAGAL ---
+            session.setdefault('login_attempts', 0)
+            session['login_attempts'] += 1
+            
+            if session['login_attempts'] >= 5:
+                user_ip = request.remote_addr
+                # Cek apakah IP sudah diblokir untuk menghindari duplikat
+                existing_block = BlockedIP.query.filter_by(ip_address=user_ip).first()
+                if not existing_block:
+                    new_block = BlockedIP(
+                        ip_address=user_ip,
+                        reason=f"5+ failed login attempts for user '{username}'."
+                    )
+                    db.session.add(new_block)
+                    db.session.commit()
+                    logging.critical(f"IP Address {user_ip} telah diblokir secara permanen karena brute-force.")
+                
+                session.pop('login_attempts', None) # Hapus counter dari sesi
+                flash('Anda telah mencoba login dan gagal terlalu banyak kali. Alamat IP Anda telah diblokir karena alasan keamanan.', 'danger')
+                abort(403) # Langsung blokir akses
             flash('Username atau password salah.', 'danger')
             
     # Secara default, captcha tidak ditampilkan.
@@ -730,38 +768,6 @@ def resend_code():
 
     return redirect(url_for('verify'))
 
-# --- Rute Khusus Admin ---
-
-# Decorator untuk memastikan hanya admin yang bisa akses
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Cek apakah user adalah admin ATAU superadmin
-        if session.get('role') not in ['administrator', 'superadmin']:
-            logging.warning(f"Akses DITOLAK (403) - Peran tidak memadai. User ID: {session.get('user_id')}, Role: {session.get('role')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
-            abort(403)
-        
-        # Cek apakah 2FA sudah dilewati untuk sesi ini
-        user = User.query.get(session.get('user_id'))
-        if user and user.otp_secret and not session.get('2fa_passed'):
-            logging.warning(f"Akses DITOLAK (403) - 2FA Belum Dilewati. User ID: {user.id}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
-            flash('Anda harus menyelesaikan verifikasi dua langkah untuk mengakses halaman ini.', 'warning')
-            return redirect(url_for('verify_2fa'))
-
-        return f(*args, **kwargs)
-    return decorated_function
-
-# Decorator baru untuk memastikan HANYA superadmin yang bisa akses
-def superadmin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Cek apakah user adalah superadmin
-        if session.get('role') != 'superadmin':
-            logging.warning(f"Akses DITOLAK (403) - Bukan Super Admin. User ID: {session.get('user_id')}, IP: {request.remote_addr}, Endpoint: {request.endpoint}")
-            abort(403) # Langsung tolak akses
-        return f(*args, **kwargs)
-    return decorated_function
-
 
 @app.route('/admin/dashboard')
 @admin_required
@@ -1027,6 +1033,28 @@ def toggle_bypass_login_otp(user_id):
     return redirect(url_for('manage_users'))
 
 
+@app.route('/admin/blocked-ips')
+@superadmin_required
+def manage_blocked_ips():
+    """Menampilkan halaman untuk mengelola IP yang diblokir."""
+    blocked_ips = BlockedIP.query.order_by(BlockedIP.timestamp.desc()).all()
+    return render_template('admin/blocked_ips.html', blocked_ips=blocked_ips)
+
+@app.route('/admin/unblock-ip/<int:block_id>', methods=['POST'])
+@superadmin_required
+def unblock_ip(block_id):
+    """Memproses permintaan untuk membuka blokir sebuah IP."""
+    block_to_delete = BlockedIP.query.get_or_404(block_id)
+    ip_address = block_to_delete.ip_address
+    
+    db.session.delete(block_to_delete)
+    db.session.commit()
+    
+    logging.info(f"Superadmin (ID: {session.get('user_id')}) telah membuka blokir untuk IP: {ip_address}.")
+    flash(f'Alamat IP {ip_address} berhasil dibuka blokirnya.', 'success')
+    return redirect(url_for('manage_blocked_ips'))
+
+
 
 
 # Rute Tambah Buku
@@ -1212,5 +1240,5 @@ def forbidden_error(error):
 
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
 
