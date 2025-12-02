@@ -287,6 +287,12 @@
     async function fetchData() {
       try {
         const response = await fetch("{{ url_for('logs_data') }}");
+        // Tambahkan ini: Cek jika sesi kedaluwarsa (server mengembalikan 401)
+        if (response.status === 401) {
+          // Arahkan pengguna kembali ke halaman login
+          window.location.href = "{{ url_for('login') }}";
+          return; // Hentikan eksekusi fungsi
+        }
         if (!response.ok) {
           throw new Error("Gagal mengambil data log dari server.");
         }

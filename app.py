@@ -292,7 +292,13 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            logging.warning(f"Akses tidak sah atau sesi berakhir ke endpoint '{request.endpoint}' dari IP {request.remote_addr}. Diperlukan login.")
+            # Jika ini adalah permintaan API (seperti untuk data log), kirim error JSON
+            if request.path.startswith('/admin/logs/data'):
+                logging.warning(f"Akses API DITOLAK (401) - Sesi berakhir. Endpoint: '{request.endpoint}', IP: {request.remote_addr}")
+                return jsonify({"error": "Sesi telah berakhir, silakan login kembali."}), 401
+            
+            # Jika ini adalah permintaan halaman biasa, redirect ke halaman login
+            logging.warning(f"Akses halaman DITOLAK - Sesi berakhir. Endpoint: '{request.endpoint}', IP: {request.remote_addr}. Diperlukan login.")
             flash('Sesi Anda telah berakhir atau Anda belum login. Silakan login kembali.', 'warning')
             return redirect(url_for('login'))
 
