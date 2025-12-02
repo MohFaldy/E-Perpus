@@ -1,6 +1,6 @@
 # app.py
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, abort
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.middleware.proxy_fix import ProxyFix
 from functools import wraps
@@ -23,6 +23,7 @@ import qrcode
 import base64
 from io import BytesIO
 from mailjet_rest import Client as MailjetClient
+from collections import Counter # Import Counter
 
 app = Flask(__name__)
 
@@ -1209,32 +1210,61 @@ def hapus_buku(buku_id):
 @app.route('/admin/logs')
 @admin_required
 def view_logs():
-    """Menampilkan log aktivitas pengguna dari file e-perpus.log."""
+    """Hanya merender shell HTML untuk dashboard log. Data akan di-fetch oleh JavaScript."""
+    return render_template('admin/logs.html')
+
+
+@app.route('/admin/logs/data')
+@admin_required
+def logs_data():
+    """Endpoint API untuk menyediakan data log dalam format JSON."""
+    
+    # --- Kalkulasi Ukuran Storage ---
+    total_size = 0
+    upload_folder = app.config['UPLOAD_FOLDER']
+    for dirpath, dirnames, filenames in os.walk(upload_folder):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    
+    # Konversi ke format yang mudah dibaca (KB, MB, GB)
+    if total_size < 1024:
+        storage_used = f"{total_size} Bytes"
+    elif total_size < 1024**2:
+        storage_used = f"{total_size/1024:.2f} KB"
+    elif total_size < 1024**3:
+        storage_used = f"{total_size/1024**2:.2f} MB"
+    else:
+        storage_used = f"{total_size/1024**3:.2f} GB"
+
+    # --- Parsing Log File ---
     parsed_logs = []
+    log_levels = Counter()
+    ip_addresses = Counter()
     log_file_path = 'e-perpus.log'
     
-    # Keyword untuk memfilter log yang relevan dengan aktivitas pengguna
     user_activity_keywords = [
         'login', 'logout', 'gagal', 'berhasil', 'verifikasi', 'dihapus', 
-        'menambahkan', 'mengedit', 'mengunduh', 'Akses', 'reset', '2FA', 'membersihkan'
+        'menambahkan', 'mengedit', 'mengunduh', 'Akses', 'reset', '2FA', 'membersihkan',
+        'dibuat', 'dihapus', 'dipromosikan', 'diturunkan', 'diblokir'
     ]
 
     try:
         with open(log_file_path, 'r', encoding='utf-8') as f:
-            # Baca 200 baris terakhir untuk efisiensi
-            lines = f.readlines()[-200:]
+            lines = f.readlines()
 
             for line in lines:
-                # Hanya proses baris yang mengandung keyword aktivitas pengguna (case-insensitive)
                 if any(keyword.lower() in line.lower() for keyword in user_activity_keywords):
-                    # Coba parse baris log dengan format yang diharapkan
                     match = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (\w+) - (.*)", line)
                     if match:
                         timestamp, level, message = match.groups()
+                        log_levels[level] += 1
                         
-                        # Coba ekstrak alamat IP dari pesan
-                        ip_match = re.search(r"IP: ([\d\.]+)", message)
+                        ip_match = re.search(r"IP: ([\d\.:a-fA-F]+)", message) # Support IPv6
                         ip_address = ip_match.group(1) if ip_match else "N/A"
+                        if ip_address != "N/A":
+                            ip_addresses[ip_address] += 1
                         
                         parsed_logs.append({
                             "timestamp": timestamp,
@@ -1242,21 +1272,51 @@ def view_logs():
                             "message": message.strip(),
                             "ip": ip_address
                         })
-        # Balik urutan list yang sudah diproses agar log terbaru muncul di paling atas
         parsed_logs.reverse()
     except FileNotFoundError:
-        flash('File log tidak ditemukan.', 'danger')
+        # Tidak perlu flash, cukup kirim data kosong
+        pass
     except Exception as e:
-        flash(f'Terjadi kesalahan saat membaca file log: {e}', 'danger')
-        
-    return render_template('admin/logs.html', logs=parsed_logs)
-        
+        # Log error internal
+        logging.error(f"Kesalahan saat membaca file log di API: {e}")
+
+    # Siapkan data untuk chart
+    chart_labels = list(log_levels.keys())
+    chart_data = list(log_levels.values())
+
+    # Siapkan data untuk statistik
+    stats = {
+        "total_logs": len(parsed_logs),
+        "info": log_levels.get('INFO', 0),
+        "warning": log_levels.get('WARNING', 0),
+        "critical": log_levels.get('CRITICAL', 0),
+        "storage": storage_used
+    }
+    
+    # Ambil 5 IP teratas
+    top_5_ips = [{"ip": ip, "count": count} for ip, count in ip_addresses.most_common(5)]
+
+    return jsonify({
+        "stats": stats,
+        "log_levels_chart": {"labels": chart_labels, "data": chart_data},
+        "top_ips": top_5_ips,
+        "recent_logs": parsed_logs[:100] # Kirim 100 log terbaru
+    })
+
 
 @app.route('/admin/logs/delete', methods=['POST'])
 @superadmin_required
 def delete_logs():
     log_file = 'e-perpus.log'
     try:
+        # Tambahkan log sebelum menghapus
+        admin_user = User.query.get(session.get('user_id'))
+        logging.warning(f"Superadmin '{admin_user.username}' (ID: {admin_user.id}) akan menghapus semua log dari IP: {request.remote_addr}.")
+        
+        # Beri jeda sesaat agar log di atas sempat tertulis ke file
+        import time
+        time.sleep(0.1)
+
         open(log_file, 'w').close()  # Kosongkan isi file
         flash('Semua log berhasil dihapus.', 'success')
     except Exception as e:
@@ -1291,4 +1351,3 @@ def forbidden_error(error):
 
 if __name__ == '__main__':
     app.run(debug=False)
-

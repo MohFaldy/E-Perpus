@@ -1,5 +1,28 @@
-{% extends "layout.html" %} {% block title %}Log Aktivitas Pengguna{% endblock
+{% extends "layout.html" %} {% block title %}Log Monitoring Dashboard{% endblock
 %} {% block content %}
+<!-- Sertakan Chart.js dari CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  /* Style untuk loading spinner */
+  .spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top: 4px solid #3b82f6;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+
 <div x-data="{ sidebarOpen: false }" class="flex h-screen bg-gray-100">
   <!-- Sidebar -->
   <aside
@@ -25,7 +48,6 @@
       >
         <i class="fas fa-users w-6"></i><span class="mx-3">Pengguna</span>
       </a>
-      <!-- HANYA TAMPILKAN UNTUK SUPERADMIN -->
       {% if current_user.role == 'superadmin' %}
       <a
         href="{{ url_for('manage_blocked_ips') }}"
@@ -60,7 +82,7 @@
           <i class="fas fa-bars text-xl"></i>
         </button>
         <h1 class="text-2xl font-semibold text-gray-700 ml-4 lg:ml-0">
-          Log Aktivitas Pengguna
+          Log Monitoring Dashboard
         </h1>
       </div>
       <div class="flex items-center">
@@ -88,86 +110,276 @@
         >
           {{ message }}
         </div>
-        {% endfor %} {% endif %} {% endwith %} {% if current_user.role ==
-        'superadmin' %}
-        <div class="flex justify-end mb-4">
+        {% endfor %} {% endif %} {% endwith %}
+
+        <div class="flex justify-between items-center mb-8">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-800">
+              Log Monitoring Dashboard
+            </h1>
+            <p class="text-gray-600">
+              Analisis aktivitas sistem secara real-time.
+            </p>
+          </div>
+          {% if current_user.role == 'superadmin' %}
           <form
             action="{{ url_for('delete_logs') }}"
             method="POST"
-            onsubmit="return confirm('Apakah Anda yakin ingin menghapus semua log? Tindakan ini tidak dapat dibatalkan.');"
+            onsubmit="return confirm('Apakah Anda yakin ingin menghapus semua data log? Tindakan ini tidak dapat dibatalkan.');"
           >
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <button
               type="submit"
-              class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors"
             >
-              <i class="fas fa-trash-alt mr-2"></i>Hapus Semua Log
+              <i class="fas fa-trash-alt mr-2"></i>
+              Hapus Log
             </button>
           </form>
+          {% endif %}
         </div>
-        {% endif %}
 
-        <!-- Tabel Log -->
-        <div class="bg-white shadow-lg rounded-lg overflow-x-auto">
-          <table class="min-w-full whitespace-nowrap">
-            <thead class="bg-gray-50">
-              <tr
-                class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
-              >
-                <th class="px-6 py-3">Waktu</th>
-                <th class="px-6 py-3">Level</th>
-                <th class="px-6 py-3">Aktivitas</th>
-                <th class="px-6 py-3">Alamat IP</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-              {% for log in logs %}
-              <tr class="hover:bg-gray-50">
-                <td class="px-6 py-4 text-sm text-gray-500">
-                  {{ log.timestamp }}
-                </td>
-                <td class="px-6 py-4">
-                  {% if log.level == 'WARNING' or log.level == 'ERROR' %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800"
-                  >
-                    {{ log.level }}
-                  </span>
-                  {% elif log.level == 'INFO' %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800"
-                  >
-                    {{ log.level }}
-                  </span>
-                  {% else %}
-                  <span
-                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800"
-                  >
-                    {{ log.level }}
-                  </span>
-                  {% endif %}
-                </td>
-                <td
-                  class="px-6 py-4 text-sm text-gray-700 break-words max-w-lg whitespace-normal"
-                >
-                  {{ log.message }}
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-500">{{ log.ip }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="4" class="text-center py-10 text-gray-500">
-                  Tidak ada log aktivitas pengguna yang ditemukan.
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <!-- Total Logs -->
+          <div
+            class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500"
+          >
+            <h3 class="text-sm font-medium text-gray-500">Total Log Events</h3>
+            <p id="total-logs" class="text-3xl font-bold mt-2 text-gray-800">
+              0
+            </p>
+          </div>
+          <!-- Info -->
+          <div
+            class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-cyan-500"
+          >
+            <h3 class="text-sm font-medium text-gray-500">Level: INFO</h3>
+            <p id="info-logs" class="text-3xl font-bold mt-2 text-gray-800">
+              0
+            </p>
+          </div>
+          <!-- Warning -->
+          <div
+            class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-yellow-400"
+          >
+            <h3 class="text-sm font-medium text-gray-500">Level: WARNING</h3>
+            <p id="warning-logs" class="text-3xl font-bold mt-2 text-gray-800">
+              0
+            </p>
+          </div>
+          <!-- Critical -->
+          <div
+            class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-red-500"
+          >
+            <h3 class="text-sm font-medium text-gray-500">Level: CRITICAL</h3>
+            <p id="critical-logs" class="text-3xl font-bold mt-2 text-gray-800">
+              0
+            </p>
+          </div>
+          <!-- Storage Used -->
+          <div
+            class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-purple-500"
+          >
+            <h3 class="text-sm font-medium text-gray-500">Book Storage Used</h3>
+            <p id="storage-used" class="text-3xl font-bold mt-2 text-gray-800">
+              0 MB
+            </p>
+          </div>
+        </div>
+
+        <!-- Charts and Top IPs -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          <!-- Log Level Distribution Chart -->
+          <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-lg">
+            <h3 class="text-lg font-semibold mb-4 text-gray-800">
+              Distribusi Level Log
+            </h3>
+            <div class="h-64 flex items-center justify-center">
+              <canvas id="logLevelChart"></canvas>
+            </div>
+          </div>
+          <!-- Top 5 IP Addresses -->
+          <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h3 class="text-lg font-semibold mb-4 text-gray-800">
+              Top 5 Alamat IP Aktif
+            </h3>
+            <ul id="top-ips-list" class="space-y-3">
+              <!-- Data akan diisi oleh JavaScript -->
+            </ul>
+          </div>
+        </div>
+
+        <!-- Recent Logs Table -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div class="p-6">
+            <h3 class="text-lg font-semibold text-gray-800">
+              Log Aktivitas Terbaru
+            </h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left text-gray-700">
+              <thead class="bg-gray-50 text-xs uppercase">
+                <tr>
+                  <th scope="col" class="px-6 py-3">Timestamp</th>
+                  <th scope="col" class="px-6 py-3">Level</th>
+                  <th scope="col" class="px-6 py-3">Alamat IP</th>
+                  <th scope="col" class="px-6 py-3">Pesan</th>
+                </tr>
+              </thead>
+              <tbody id="log-table-body">
+                <!-- Loading spinner -->
+                <tr>
+                  <td colspan="4" class="text-center p-8">
+                    <div class="flex justify-center items-center">
+                      <div class="spinner"></div>
+                      <span class="ml-4 text-gray-500">Memuat data log...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </main>
   </div>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Inisialisasi chart (kosong pada awalnya)
+    const ctx = document.getElementById("logLevelChart").getContext("2d");
+    let logLevelChart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Jumlah Log",
+            data: [],
+            backgroundColor: [
+              "rgba(59, 130, 246, 0.8)", // Blue (INFO)
+              "rgba(251, 191, 36, 0.8)", // Yellow (WARNING)
+              "rgba(239, 68, 68, 0.8)", // Red (CRITICAL)
+              "rgba(14, 165, 233, 0.8)", // Cyan (DEBUG, etc)
+            ],
+            borderColor: "#fff",
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "right",
+            labels: {
+              color: "#4B5563", // Warna teks legenda (abu-abu)
+            },
+          },
+        },
+      },
+    });
+
+    // Fungsi untuk mengambil dan memperbarui data
+    async function fetchData() {
+      try {
+        const response = await fetch("{{ url_for('logs_data') }}");
+        if (!response.ok) {
+          throw new Error("Gagal mengambil data log dari server.");
+        }
+        const data = await response.json();
+        updateDashboard(data);
+      } catch (error) {
+        console.error("Error:", error);
+        document.getElementById("log-table-body").innerHTML = `
+            <tr>
+              <td colspan="4" class="text-center p-8 text-red-500">
+                Gagal memuat data. Coba refresh halaman.
+              </td>
+            </tr>`;
+      }
+    }
+
+    // Fungsi untuk memperbarui elemen UI
+    function updateDashboard(data) {
+      // Update Stat Cards
+      document.getElementById("total-logs").textContent = data.stats.total_logs;
+      document.getElementById("info-logs").textContent = data.stats.info;
+      document.getElementById("warning-logs").textContent = data.stats.warning;
+      document.getElementById("critical-logs").textContent =
+        data.stats.critical;
+      document.getElementById("storage-used").textContent = data.stats.storage;
+
+      // Update Chart
+      logLevelChart.data.labels = data.log_levels_chart.labels;
+      logLevelChart.data.datasets[0].data = data.log_levels_chart.data;
+      logLevelChart.update();
+
+      // Update Top IPs
+      const topIpsList = document.getElementById("top-ips-list");
+      topIpsList.innerHTML = ""; // Kosongkan list
+      if (data.top_ips.length > 0) {
+        data.top_ips.forEach((item) => {
+          const li = `
+              <li class="flex justify-between items-center text-sm">
+                <span class="text-blue-600 font-mono">${item.ip}</span>
+                <span class="bg-gray-200 text-gray-800 font-bold text-xs px-2 py-1 rounded-full">${item.count}</span>
+              </li>`;
+          topIpsList.innerHTML += li;
+        });
+      } else {
+        topIpsList.innerHTML = `<li class="text-sm text-gray-400">Belum ada data IP.</li>`;
+      }
+
+      // Update Log Table
+      const logTableBody = document.getElementById("log-table-body");
+      logTableBody.innerHTML = ""; // Kosongkan tabel
+      if (data.recent_logs.length > 0) {
+        data.recent_logs.forEach((log) => {
+          let levelClass = "text-gray-700";
+          let levelBg = "bg-gray-100";
+          if (log.level === "WARNING") {
+            levelClass = "text-yellow-800";
+            levelBg = "bg-yellow-100";
+          } else if (log.level === "CRITICAL") {
+            levelClass = "text-red-800";
+            levelBg = "bg-red-100";
+          } else if (log.level === "INFO") {
+            levelClass = "text-blue-800";
+            levelBg = "bg-blue-100";
+          }
+
+          const row = `
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 font-mono text-gray-500">${log.timestamp}</td>
+                <td class="px-6 py-4">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${levelBg} ${levelClass}">
+                    ${log.level}
+                  </span>
+                </td>
+                <td class="px-6 py-4 font-mono text-gray-600">${log.ip}</td>
+                <td class="px-6 py-4 text-gray-800">${log.message}</td>
+              </tr>`;
+          logTableBody.innerHTML += row;
+        });
+      } else {
+        logTableBody.innerHTML = `
+            <tr>
+              <td colspan="4" class="text-center p-8 text-gray-500">
+                Tidak ada log aktivitas yang tercatat.
+              </td>
+            </tr>`;
+      }
+    }
+
+    // Panggil fetchData saat halaman dimuat, lalu setiap 30 detik
+    fetchData();
+    setInterval(fetchData, 30000); // Refresh setiap 30 detik
+  });
+</script>
 
 <!-- Alpine.js untuk interaktivitas sidebar -->
 <script
