@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Buku Tidak Ditemukan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100">
+    <div class="container mx-auto mt-10 px-4">
+      <div
+        class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-6 rounded-lg shadow-md"
+        role="alert"
+      >
+        <h2 class="font-bold text-2xl mb-2">File Tidak Ditemukan</h2>
+        <p>
+          Maaf, file untuk buku berjudul
+          <strong class="font-semibold">"{{ buku.judul }}"</strong> tidak dapat
+          ditemukan di server kami.
+        </p>
+        <p class="mt-2">
+          Data buku ini ada di sistem, namun file digitalnya mungkin telah
+          terhapus atau rusak. Silakan laporkan masalah ini ke administrator.
+        </p>
+        <hr class="my-4 border-yellow-300" />
+        <a
+          href="{{ url_for('index') }}"
+          class="inline-block bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Kembali ke Daftar Buku
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

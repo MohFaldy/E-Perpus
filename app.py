@@ -349,11 +349,31 @@ def superadmin_required(f):
 
 
 @app.before_request
-def check_if_blocked():
+def before_request_checks():
     """
-    Middleware untuk memeriksa setiap request apakah berasal dari IP yang diblokir.
-    Ini berjalan sebelum setiap handler rute.
+    Middleware untuk memeriksa setiap request.
+    1. Mode Maintenance
+    2. IP yang diblokir
     """
+    # --- 1. Cek Mode Maintenance (LOGIKA DIPERBARUI) ---
+    # Cek variabel lingkungan. Gunakan 'False' sebagai string default.
+    is_maintenance = os.environ.get('MAINTENANCE_MODE', 'False').lower() == 'true'
+
+    if is_maintenance:
+        # Jika mode maintenance AKTIF, jalankan logika di bawah.
+
+        # 1. Izinkan superadmin yang sudah login untuk mengakses semua halaman.
+        if session.get('role') == 'superadmin':
+            return # Lanjutkan ke request normal.
+
+        # 2. Untuk semua pengguna lain (termasuk yang belum login),
+        #    hanya izinkan akses ke halaman yang dibutuhkan superadmin untuk login.
+        allowed_endpoints = ['login', 'logout', 'static', 'verify_login', 'verify_2fa', 'request_password_reset', 'reset_with_token']
+        if request.endpoint not in allowed_endpoints:
+            # Jika mencoba akses halaman lain (misalnya '/'), tampilkan halaman maintenance.
+            return render_template('maintenance.html'), 503
+
+    # --- 2. Cek IP yang Diblokir ---
     # Dapatkan IP asli pengguna, bahkan di belakang proxy
     user_ip = request.remote_addr
     
@@ -368,7 +388,8 @@ def check_if_blocked():
 
         # Jika bukan superadmin atau mencoba akses halaman non-admin, blokir.
         logging.critical(f"Akses DIBLOKIR dari IP: {user_ip} ke path: {request.path}. Alasan: Brute-force.")
-        abort(403) # Tampilkan halaman 'Forbidden'
+        # Ganti abort(403) dengan render template kustom
+        return render_template('errors/blocked_ip.html'), 403
 
 
 # Rute Halaman Utama (Untuk Pengguna)
@@ -399,8 +420,7 @@ def download_buku(buku_id):
         return send_from_directory(app.config['UPLOAD_FOLDER'], buku.file_path, as_attachment=True)
     except FileNotFoundError:
         logging.error(f"File tidak ditemukan saat user '{session.get('user_id')}' mencoba mengunduh buku ID: {buku_id} (Path: {buku.file_path})")
-        flash('Maaf, file untuk buku ini tidak dapat ditemukan.', 'danger')
-        return redirect(url_for('index'))
+        return render_template('errors/book_file_not_found.html', buku=buku), 404
 
 
 # Rute Login
@@ -498,8 +518,8 @@ def login():
                     logging.critical(f"IP Address {user_ip} telah diblokir secara permanen karena brute-force.")
                 
                 session.pop('login_attempts', None) # Hapus counter dari sesi
-                flash('Anda telah mencoba login dan gagal terlalu banyak kali. Alamat IP Anda telah diblokir karena alasan keamanan.', 'danger')
-                abort(403) # Langsung blokir akses
+                # Langsung tampilkan halaman blokir kustom, jangan panggil abort(403) generik
+                return render_template('errors/blocked_ip.html'), 403
             flash('Username atau password salah.', 'danger')
             
     # Secara default, captcha tidak ditampilkan.
